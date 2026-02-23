@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --bg: #f6f5f2;
+  --surface: #ffffff;
+  --text: #1f2937;
+  --mutedText: #6b7280;
+  --accent: #5f7f7b;
+  --accentSoft: #e6efee;
+}
+
+body {
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    'Segoe UI', sans-serif;
+  background-color: var(--bg);
+  color: var(--text);
+}
+
+.bg-surface {
+  background-color: var(--surface);
+}
+
+.bg-accent {
+  background-color: var(--accent);
+}
+
+.bg-accentSoft {
+  background-color: var(--accentSoft);
+}
+
+.text-text {
+  color: var(--text);
+}
+
+.text-mutedText {
+  color: var(--mutedText);
+}
