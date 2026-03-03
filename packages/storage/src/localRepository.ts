@@ -6,11 +6,13 @@ import {
   profileSchema,
   settingsSchema,
   weekLogSchema,
+  weekNoteSchema,
   weekPlanSchema,
   type Domain,
   type Profile,
   type Settings,
   type WeekLogEntry,
+  type WeekNote,
   type WeekPlan,
 } from '@ikigai/core';
 import { z } from 'zod';
@@ -20,6 +22,7 @@ import type {
   ProfileRepository,
   SettingsRepository,
   WeekLogRepository,
+  WeekNoteRepository,
   WeekPlanRepository,
 } from './repository';
 
@@ -43,7 +46,8 @@ export class LocalRepository
     SettingsRepository,
     ProfileRepository,
     WeekPlanRepository,
-    WeekLogRepository
+    WeekLogRepository,
+    WeekNoteRepository
 {
   private db: IkigaiDB;
 
@@ -326,6 +330,19 @@ export class LocalRepository
   async saveWeekLog(entry: WeekLogEntry): Promise<void> {
     const validated = parseOrThrow(weekLogSchema, entry, 'WeekLog');
     await this.db.weekLogs.put(validated);
+  }
+
+  async getWeekNote(weekId: string): Promise<WeekNote | null> {
+    const note = await this.db.weekNotes.where('weekId').equals(weekId).first();
+    if (!note) {
+      return null;
+    }
+    return parseOrThrow(weekNoteSchema, note, 'WeekNote');
+  }
+
+  async saveWeekNote(note: WeekNote): Promise<void> {
+    const validated = parseOrThrow(weekNoteSchema, note, 'WeekNote');
+    await this.db.weekNotes.put(validated);
   }
 
   async resetOnboarding(): Promise<void> {

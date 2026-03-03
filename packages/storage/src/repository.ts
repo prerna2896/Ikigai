@@ -1,4 +1,11 @@
-import type { Domain, Profile, Settings, WeekLogEntry, WeekPlan } from '@ikigai/core';
+import type {
+  Domain,
+  Profile,
+  Settings,
+  WeekLogEntry,
+  WeekNote,
+  WeekPlan,
+} from '@ikigai/core';
 
 export interface DomainRepository {
   listDomains(): Promise<Domain[]>;
@@ -26,4 +33,9 @@ export interface WeekPlanRepository {
 export interface WeekLogRepository {
   getWeekLogs(weekId: string): Promise<WeekLogEntry[]>;
   saveWeekLog(entry: WeekLogEntry): Promise<void>;
+}
+
+export interface WeekNoteRepository {
+  getWeekNote(weekId: string): Promise<WeekNote | null>;
+  saveWeekNote(note: WeekNote): Promise<void>;
 }

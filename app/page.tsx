@@ -45,6 +45,17 @@ const startOfToday = () => {
   return new Date(now.getFullYear(), now.getMonth(), now.getDate());
 };
 
+const getDomainIcon = (domainName: string) => {
+  const key = domainName.toLowerCase();
+  if (key.includes('work') || key.includes('study')) return '💼';
+  if (key.includes('health')) return '🫁';
+  if (key.includes('home') || key.includes('life')) return '🏠';
+  if (key.includes('relationship')) return '🤝';
+  if (key.includes('growth')) return '🌱';
+  if (key.includes('rest') || key.includes('recharge')) return '🫧';
+  return '•';
+};
+
 export default function HomePage() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [weekPlan, setWeekPlan] = useState<WeekPlan | null>(null);
@@ -70,7 +81,7 @@ export default function HomePage() {
           const latest = sorted[0];
           const normalized = withDerivedPlannedHours(latest);
           setWeekPlan(normalized);
-          const logs = await repo.getWeekLogs(latest.id);
+          const logs = await repo.getWeekLogs(normalized.id);
           const orderedLogs = [...logs].sort((a, b) =>
             a.dateISO < b.dateISO ? 1 : -1,
           );
@@ -211,6 +222,7 @@ export default function HomePage() {
     }
   };
 
+
   return (
     <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 px-6 py-16">
       <header className="space-y-3">
@@ -221,8 +233,7 @@ export default function HomePage() {
           A calm place to plan and reflect on your week.
         </h1>
         <p className="text-base text-mutedText">
-          This build focuses on the data layer foundation and local-first
-          persistence.
+          Plan gently, log lightly, and notice patterns over time.
         </p>
         {status ? (
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
@@ -253,6 +264,12 @@ export default function HomePage() {
             href="/profile"
           >
             Open profile
+          </Link>
+          <Link
+            className="inline-flex items-center rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-text"
+            href="/history"
+          >
+            View history
           </Link>
           <Link
             className="inline-flex items-center rounded-full border border-slate-200 bg-accentSoft px-4 py-2 text-sm font-medium text-text"
@@ -344,11 +361,15 @@ export default function HomePage() {
                     key={task.id}
                     className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-2 text-sm text-text"
                   >
-                    <div className="flex min-w-[160px] flex-1 flex-col">
-                      <span className="font-medium">{task.title}</span>
-                      <span className="text-xs text-mutedText">
-                        {task.domainName}
+                    <div className="flex min-w-[160px] flex-1 items-center gap-3">
+                      <span
+                        className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-base"
+                        title={task.domainName}
+                        aria-label={task.domainName}
+                      >
+                        {getDomainIcon(task.domainName)}
                       </span>
+                      <span className="font-medium">{task.title}</span>
                     </div>
                     <div className="flex items-center gap-4 text-xs text-mutedText">
                       <div className="flex items-center gap-2">

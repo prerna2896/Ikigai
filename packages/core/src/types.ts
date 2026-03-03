@@ -143,3 +143,11 @@ export type WeekLogEntry = {
   createdAt: string;
   updatedAt: string;
 };
+
+export type WeekNote = {
+  id: string;
+  weekId: string;
+  note: string;
+  createdAt: string;
+  updatedAt: string;
+};

@@ -5,6 +5,7 @@ import type {
   Settings,
   WeekPlan,
   WeekLogEntry,
+  WeekNote,
   WeekDraft,
   DraftTask,
   FrozenWeekSnapshot,
@@ -60,12 +61,18 @@ const schemaV8 = {
   weekLogs: 'id, weekId, dateISO, createdAt, updatedAt',
 };
 
+const schemaV9 = {
+  ...schemaV8,
+  weekNotes: 'id, weekId, createdAt, updatedAt',
+};
+
 export class IkigaiDB extends Dexie {
   domains!: Table<Domain, string>;
   settings!: Table<Settings, string>;
   profiles!: Table<Profile, string>;
   weekPlans!: Table<WeekPlan, string>;
   weekLogs!: Table<WeekLogEntry, string>;
+  weekNotes!: Table<WeekNote, string>;
   weekDrafts!: Table<WeekDraft, string>;
   draftTasks!: Table<DraftTask, string>;
   frozenWeeks!: Table<FrozenWeekSnapshot, string>;
@@ -81,6 +88,7 @@ export class IkigaiDB extends Dexie {
     this.version(6).stores(schemaV6);
     this.version(7).stores(schemaV7);
     this.version(8).stores(schemaV8);
+    this.version(9).stores(schemaV9);
   }
 }
 

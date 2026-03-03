@@ -145,6 +145,14 @@ export const weekLogSchema = z.object({
   updatedAt: isoDateString,
 });
 
+export const weekNoteSchema = z.object({
+  id: z.string(),
+  weekId: z.string(),
+  note: z.string(),
+  createdAt: isoDateString,
+  updatedAt: isoDateString,
+});
+
 export const profileSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -168,4 +176,5 @@ export type DomainTaskInput = z.infer<typeof domainTaskSchema>;
 export type WeekDomainInput = z.infer<typeof weekDomainSchema>;
 export type WeekPlanInput = z.infer<typeof weekPlanSchema>;
 export type WeekLogInput = z.infer<typeof weekLogSchema>;
+export type WeekNoteInput = z.infer<typeof weekNoteSchema>;
 export type ProfileInput = z.infer<typeof profileSchema>;
