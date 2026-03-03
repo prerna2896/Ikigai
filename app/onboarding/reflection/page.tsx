@@ -22,7 +22,7 @@ export default function OnboardingReflectionPage() {
       Promise.all([repo.getProfile(), repo.getSettings()])
         .then(([profileRecord]) => {
           if (!profileRecord) {
-            router.replace('/onboarding/name');
+            router.replace('/onboarding/context');
             return;
           }
           setProfile(profileRecord);
@@ -67,11 +67,24 @@ export default function OnboardingReflectionPage() {
   };
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-8 px-6 py-12">
+    <main
+      className="mx-auto flex min-h-screen max-w-3xl flex-col gap-8 px-6 py-12"
+      data-testid="onboarding-reflection"
+    >
       <header className="space-y-3">
-        <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
-          Reflection
-        </p>
+        <div className="flex items-center justify-between">
+          <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
+            Reflection
+          </p>
+          <button
+            type="button"
+            className="text-xs text-mutedText hover:text-text"
+            onClick={() => router.replace('/')}
+            data-testid="onboarding-home"
+          >
+            Home
+          </button>
+        </div>
         <h1 className="text-3xl font-semibold text-text">
           A few gentle questions
         </h1>
@@ -103,6 +116,7 @@ export default function OnboardingReflectionPage() {
                     handleAnswerChange(question.id, event.target.value)
                   }
                   placeholder="A short note is fine"
+                  data-testid={`reflection-input-${question.id}`}
                 />
               ) : (
                 <div className="flex flex-col gap-2">
@@ -117,6 +131,7 @@ export default function OnboardingReflectionPage() {
                         value={option}
                         checked={answers[question.id] === option}
                         onChange={() => handleAnswerChange(question.id, option)}
+                        data-testid={`reflection-option-${question.id}-${option}`}
                       />
                       {option}
                     </label>
@@ -132,7 +147,8 @@ export default function OnboardingReflectionPage() {
         <button
           type="button"
           className="rounded-full border border-slate-300 px-4 py-2 text-text"
-          onClick={() => router.replace('/onboarding/name')}
+          onClick={() => router.replace('/onboarding/tone')}
+          data-testid="onboarding-back"
         >
           Back
         </button>
@@ -141,6 +157,7 @@ export default function OnboardingReflectionPage() {
           className="rounded-full bg-accent px-5 py-2 font-medium text-white"
           onClick={() => void handleContinue()}
           disabled={!repository || !profile}
+          data-testid="onboarding-next"
         >
           Continue
         </button>

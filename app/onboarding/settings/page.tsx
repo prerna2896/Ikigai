@@ -77,7 +77,7 @@ export default function OnboardingSettingsPage() {
       Promise.all([repo.getSettings(), repo.getProfile()])
         .then(([settings, profile]) => {
           if (!profile) {
-            router.replace('/onboarding/name');
+            router.replace('/onboarding/context');
             return;
           }
           if (profile.reflections.length === 0) {
@@ -176,11 +176,24 @@ export default function OnboardingSettingsPage() {
   };
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-8 px-6 py-12">
+    <main
+      className="mx-auto flex min-h-screen max-w-3xl flex-col gap-8 px-6 py-12"
+      data-testid="onboarding-settings"
+    >
       <header className="space-y-3">
-        <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
-          Settings
-        </p>
+        <div className="flex items-center justify-between">
+          <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
+            Settings
+          </p>
+          <button
+            type="button"
+            className="text-xs text-mutedText hover:text-text"
+            onClick={() => router.replace('/')}
+            data-testid="onboarding-home"
+          >
+            Home
+          </button>
+        </div>
         <h1 className="text-3xl font-semibold text-text">{activeStep.title}</h1>
         {activeStep.helper ? (
           <p className="text-sm text-mutedText">{activeStep.helper}</p>
@@ -210,6 +223,7 @@ export default function OnboardingSettingsPage() {
                     value={option}
                     checked={strictness === option}
                     onChange={() => setStrictness(option)}
+                    data-testid={`settings-strictness-${option}`}
                   />
                   <span className="font-medium">
                     {option.replace('_', ' ')}
@@ -374,6 +388,7 @@ export default function OnboardingSettingsPage() {
                     setProfessionOtherText('');
                   }
                 }}
+                data-testid="settings-profession-select"
               >
                 {professionOptions.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -390,6 +405,7 @@ export default function OnboardingSettingsPage() {
                   className="rounded-xl border border-slate-200 px-3 py-2 text-text"
                   value={professionOtherText}
                   onChange={(event) => setProfessionOtherText(event.target.value)}
+                  data-testid="settings-profession-other"
                 />
               </label>
             ) : null}
@@ -413,6 +429,7 @@ export default function OnboardingSettingsPage() {
                     }
                     event.currentTarget.select();
                   }}
+                  data-testid="settings-class-hours"
                 />
                 {classHoursPerWeek > 80 ? (
                   <span className="text-xs text-mutedText">
@@ -444,6 +461,7 @@ export default function OnboardingSettingsPage() {
                     }
                     event.currentTarget.select();
                   }}
+                  data-testid="settings-job-hours"
                 />
                 {jobHoursPerWeek > 80 ? (
                   <span className="text-xs text-mutedText">
@@ -471,6 +489,7 @@ export default function OnboardingSettingsPage() {
                     )
                   }
                   onFocus={(event) => event.currentTarget.select()}
+                  data-testid="settings-sleep-hours"
                 />
             </label>
             <label className="flex flex-col gap-2 text-sm text-mutedText">
@@ -486,6 +505,7 @@ export default function OnboardingSettingsPage() {
                     )
                   }
                   onFocus={(event) => event.currentTarget.select()}
+                  data-testid="settings-maintenance-hours"
                 />
             </label>
           </div>
@@ -497,10 +517,11 @@ export default function OnboardingSettingsPage() {
           type="button"
           className="rounded-full border border-slate-300 px-4 py-2 text-text"
           onClick={handleBack}
+          data-testid="onboarding-back"
         >
           Back
         </button>
-        <div className="text-mutedText">
+        <div className="text-mutedText" data-testid="onboarding-settings-step">
           Step {activeStepIndex + 1} of {settingsSteps.length}
         </div>
         {isLastStep ? (
@@ -509,6 +530,7 @@ export default function OnboardingSettingsPage() {
             className="rounded-full bg-accent px-5 py-2 font-medium text-white"
             onClick={() => void handleComplete()}
             disabled={!repository}
+            data-testid="onboarding-finish"
           >
             Finish setup
           </button>
@@ -533,6 +555,7 @@ export default function OnboardingSettingsPage() {
               className="rounded-full bg-accent px-5 py-2 font-medium text-white"
               onClick={handleNext}
               disabled={!repository}
+              data-testid="onboarding-next"
             >
               Continue
             </button>

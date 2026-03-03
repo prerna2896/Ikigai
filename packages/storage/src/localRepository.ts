@@ -345,6 +345,34 @@ export class LocalRepository
     await this.db.weekNotes.put(validated);
   }
 
+  async resetAll(): Promise<void> {
+    await this.db.transaction(
+      'rw',
+      this.db.settings,
+      this.db.profiles,
+      this.db.domains,
+      this.db.weekPlans,
+      this.db.weekLogs,
+      this.db.weekNotes,
+      this.db.weekDrafts,
+      this.db.draftTasks,
+      this.db.frozenWeeks,
+      this.db.weekReviews,
+      async () => {
+        await this.db.settings.clear();
+        await this.db.profiles.clear();
+        await this.db.domains.clear();
+        await this.db.weekPlans.clear();
+        await this.db.weekLogs.clear();
+        await this.db.weekNotes.clear();
+        await this.db.weekDrafts.clear();
+        await this.db.draftTasks.clear();
+        await this.db.frozenWeeks.clear();
+        await this.db.weekReviews.clear();
+      },
+    );
+  }
+
   async resetOnboarding(): Promise<void> {
     await this.db.transaction(
       'rw',

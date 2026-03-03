@@ -211,6 +211,7 @@ export default function IkigaiWheelPlot({
           return (
             <g
               key={segment.id}
+              data-testid={`plot-segment-${index}`}
               style={{
                 transform: `translate(${lift.x}px, ${lift.y}px)`,
                 transition: 'transform 120ms ease, opacity 120ms ease',

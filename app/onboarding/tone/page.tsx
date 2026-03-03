@@ -32,7 +32,7 @@ export default function OnboardingTonePage() {
       Promise.all([repo.getProfile(), repo.getSettings()])
         .then(([profile, settings]) => {
           if (!profile) {
-            router.replace('/onboarding/name');
+            router.replace('/onboarding/context');
             return;
           }
           setPreferredTone(settings.preferredTone ?? null);
@@ -58,19 +58,32 @@ export default function OnboardingTonePage() {
   };
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-8 px-6 py-16">
+    <main
+      className="mx-auto flex min-h-screen max-w-3xl flex-col gap-8 px-6 py-16"
+      data-testid="onboarding-tone"
+    >
       <section className="rounded-2xl border border-slate-200 bg-surface p-8 shadow-sm">
         <div className="space-y-4">
-          <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
-            Tone
-          </p>
+          <div className="flex items-center justify-between">
+            <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
+              Tone
+            </p>
+            <button
+              type="button"
+              className="text-xs text-mutedText hover:text-text"
+              onClick={() => router.replace('/')}
+              data-testid="onboarding-home"
+            >
+              Home
+            </button>
+          </div>
           <h1 className="text-3xl font-semibold text-text">
             How would you like this to feel?
           </h1>
           <p className="text-sm text-mutedText">
             There’s no right choice. This just helps set the tone.
           </p>
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-3" data-testid="onboarding-tone-options">
             {toneOptions.map((option) => (
               <label
                 key={option.label}
@@ -82,6 +95,7 @@ export default function OnboardingTonePage() {
                   value={option.label}
                   checked={preferredTone === option.value}
                   onChange={() => setPreferredTone(option.value)}
+                  data-testid={`tone-option-${option.value ?? 'unsure'}`}
                 />
                 {option.label}
               </label>
@@ -97,6 +111,7 @@ export default function OnboardingTonePage() {
               type="button"
               className="rounded-full border border-slate-300 px-4 py-2 text-sm text-text"
               onClick={() => router.replace('/onboarding/context')}
+              data-testid="onboarding-back"
             >
               Back
             </button>
@@ -105,6 +120,7 @@ export default function OnboardingTonePage() {
               className="inline-flex items-center rounded-full bg-accent px-5 py-2 text-sm font-medium text-white"
               onClick={() => void handleContinue()}
               disabled={!repository}
+              data-testid="onboarding-next"
             >
               Continue
             </button>

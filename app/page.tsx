@@ -353,7 +353,10 @@ export default function HomePage() {
           </div>
         ) : null}
       </header>
-      <section className="rounded-2xl border border-slate-200 bg-surface p-6 shadow-sm">
+      <section
+        className="rounded-2xl border border-slate-200 bg-surface p-6 shadow-sm"
+        data-testid="home-tabs"
+      >
         <h2 className="text-lg font-medium text-text">Start here</h2>
         <p className="mt-2 text-sm text-mutedText">
           A few calm steps to make this space feel like yours.
@@ -361,25 +364,29 @@ export default function HomePage() {
         <div className="mt-4 flex flex-wrap gap-3">
           <Link
             className="inline-flex items-center rounded-full bg-accent px-4 py-2 text-sm font-medium text-white"
-            href="/onboarding/name"
+            href="/onboarding/context"
+            data-testid="home-tab-get-started"
           >
             Get started
           </Link>
           <Link
             className="inline-flex items-center rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-text"
             href="/week/plan"
+            data-testid="home-tab-planning"
           >
             Go to planning
           </Link>
           <Link
             className="inline-flex items-center rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-text"
             href="/profile"
+            data-testid="home-tab-profile"
           >
             Open profile
           </Link>
           <Link
             className="inline-flex items-center rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-text"
             href="/history"
+            data-testid="home-tab-history"
           >
             View history
           </Link>
@@ -395,7 +402,10 @@ export default function HomePage() {
         </p>
       </section>
       {weekPlan ? (
-        <section className="rounded-2xl border border-slate-200 bg-surface p-6 shadow-sm">
+        <section
+          className="rounded-2xl border border-slate-200 bg-surface p-6 shadow-sm"
+          data-testid="latest-week"
+        >
           <div className="space-y-2">
             <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
               Latest week
@@ -724,7 +734,7 @@ export default function HomePage() {
           <div className="mt-4 flex flex-wrap gap-3">
             <Link
               className="inline-flex items-center rounded-full bg-accent px-4 py-2 text-sm font-medium text-white"
-              href="/onboarding/name"
+              href="/onboarding/context"
             >
               Get started
             </Link>

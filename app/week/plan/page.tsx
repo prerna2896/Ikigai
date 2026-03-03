@@ -84,7 +84,7 @@ export default function WeekPlanPage() {
         .then(async ([settingsRecord, profile, plans]) => {
           setSettings(settingsRecord);
           if (!profile) {
-            router.replace('/onboarding/name');
+            router.replace('/onboarding/context');
             return;
           }
           const timeZone =
@@ -98,14 +98,18 @@ export default function WeekPlanPage() {
             weekStartDay,
             preferNextWeek,
           );
-          const weekEndISO = getWeekEndISO(weekStartISO);
           const sortedPlans = [...plans].sort((a, b) =>
             a.weekStartISO < b.weekStartISO ? 1 : -1,
           );
+          let plan = await repo.getWeekPlan(weekStartISO);
+          if (!plan && sortedPlans.length > 0) {
+            plan = sortedPlans[0];
+          }
+          const effectiveWeekStartISO = plan?.weekStartISO ?? weekStartISO;
+          const weekEndISO = getWeekEndISO(effectiveWeekStartISO);
           const previousPlan = sortedPlans.find(
-            (candidate) => candidate.weekStartISO !== weekStartISO,
+            (candidate) => candidate.weekStartISO !== effectiveWeekStartISO,
           );
-          const plan = await repo.getWeekPlan(weekStartISO);
           if (plan) {
             let normalized = applyDefaultDomainNames(plan);
             if (
@@ -432,11 +436,12 @@ export default function WeekPlanPage() {
     void persistPlan(updated);
   };
 
-  const handleCompletePlanning = () => {
+  const handleCompletePlanning = async () => {
     if (!weekPlan) {
       return;
     }
-    void persistPlan({ ...weekPlan, isFrozen: true }, PLAN_COPY.saveStatus);
+    await persistPlan({ ...weekPlan, isFrozen: true }, PLAN_COPY.saveStatus);
+    router.replace('/');
   };
 
   const handleReopenPlanning = () => {
@@ -565,19 +570,24 @@ export default function WeekPlanPage() {
   }, [weekPlan, selectedPrincipleId]);
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-8 px-6 py-12">
-      <header className="space-y-3">
+    <main
+      className="mx-auto flex min-h-screen max-w-6xl flex-col gap-8 px-6 py-12"
+      data-testid="planning-page"
+    >
+      <header className="space-y-3" data-testid="planning-banner">
         <div className="flex items-center justify-between">
           <button
             type="button"
             className="inline-flex items-center gap-2 text-xs text-mutedText hover:text-text"
             onClick={() => router.push('/onboarding/settings?step=3')}
+            data-testid="planning-back"
           >
             ← Back to settings
           </button>
           <Link
             href="/"
             className="inline-flex items-center gap-2 text-xs text-mutedText hover:text-text"
+            data-testid="planning-home"
           >
             <span className="text-base" aria-hidden="true">
               ⌂
@@ -621,6 +631,7 @@ export default function WeekPlanPage() {
                 placeholder={PLAN_COPY.taskPlaceholder}
                 value={taskTitle}
                 onChange={(event) => setTaskTitle(event.target.value)}
+                data-testid="task-title-input"
               />
             </label>
             <label className="flex flex-col gap-2 text-sm text-mutedText">
@@ -632,6 +643,7 @@ export default function WeekPlanPage() {
                 value={taskHours}
                 onChange={(event) => setTaskHours(formatHoursInput(event.target.value))}
                 onFocus={(event) => event.currentTarget.select()}
+                data-testid="task-hours-input"
               />
               <span className="text-xs text-mutedText">{PLAN_COPY.hoursHelper}</span>
             </label>
@@ -640,6 +652,7 @@ export default function WeekPlanPage() {
                 type="button"
                 className="inline-flex w-full items-center justify-center rounded-xl bg-accent px-4 py-2 text-sm font-medium text-white"
                 onClick={() => void handleAddTask()}
+                data-testid="add-task-button"
               >
                 {PLAN_COPY.addTask}
               </button>
@@ -706,7 +719,7 @@ export default function WeekPlanPage() {
               <p className="text-xs text-mutedText">{PLAN_COPY.taskListNote}</p>
             </div>
             {planningHoursLeft !== null ? (
-              <div className="space-y-2">
+              <div className="space-y-2" data-testid="task-list">
                 <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-mutedText">
                   <span className="font-medium text-text">
                     {PLAN_COPY.planningLeftLabel}:
@@ -741,6 +754,8 @@ export default function WeekPlanPage() {
                   <div
                     key={task.id}
                     className="relative flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2"
+                    data-testid="task-row"
+                    data-task-id={task.id}
                   >
                     <input
                       type="text"
@@ -759,6 +774,7 @@ export default function WeekPlanPage() {
                           true,
                         )
                       }
+                      data-testid="task-row-title"
                     />
                     <input
                       type="text"
@@ -788,6 +804,7 @@ export default function WeekPlanPage() {
                       }
                       onFocus={(event) => event.currentTarget.select()}
                       aria-label={PLAN_COPY.hoursAria}
+                      data-testid="task-row-hours"
                     />
                     <div className="relative">
                       <button
@@ -798,6 +815,7 @@ export default function WeekPlanPage() {
                             domainPickerTaskId === task.id ? null : task.id,
                           )
                         }
+                        data-testid="task-row-domain"
                       >
                         {domain.name} ▾
                       </button>
@@ -819,6 +837,7 @@ export default function WeekPlanPage() {
                                 onClick={() =>
                                   void handleAssignTaskDomain(task.id, domain.id, option.id)
                                 }
+                                data-testid={`task-domain-option-${task.id}-${option.id}`}
                               >
                                 {option.name}
                                 {option.id === domain.id ? '•' : null}
@@ -910,6 +929,12 @@ export default function WeekPlanPage() {
       {planningComplete ? (
         <section className="rounded-2xl border border-slate-200 bg-surface p-6 shadow-sm">
           <div className="space-y-4">
+            <div
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-mutedText"
+              data-testid="frozen-banner"
+            >
+              This week’s plan is frozen.
+            </div>
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h2 className="text-lg font-semibold text-text">
@@ -935,28 +960,30 @@ export default function WeekPlanPage() {
             </div>
             <div className="flex flex-col items-center gap-4">
               {weekPlan ? (
-                plotMode === 'domains' ? (
-                  <IkigaiWheelPlot
-                    domains={weekPlan.domains}
-                    activeDomainId={selectedDomainId}
-                    showSkeleton={!hasTasks}
-                    onSelectDomain={(domainId) => {
-                      setSelectedPrincipleId(null);
-                      setSelectedDomainId(domainId);
-                      setSidebarOpen(true);
-                    }}
-                  />
-                ) : (
-                  <IkigaiPrinciplesPlot
-                    domains={weekPlan.domains}
-                    activePrincipleId={selectedPrincipleId}
-                    onSelectPrinciple={(principleId) => {
-                      setSelectedDomainId(null);
-                      setSelectedPrincipleId(principleId);
-                      setSidebarOpen(true);
-                    }}
-                  />
-                )
+                <div data-testid="week-plot">
+                  {plotMode === 'domains' ? (
+                    <IkigaiWheelPlot
+                      domains={weekPlan.domains}
+                      activeDomainId={selectedDomainId}
+                      showSkeleton={!hasTasks}
+                      onSelectDomain={(domainId) => {
+                        setSelectedPrincipleId(null);
+                        setSelectedDomainId(domainId);
+                        setSidebarOpen(true);
+                      }}
+                    />
+                  ) : (
+                    <IkigaiPrinciplesPlot
+                      domains={weekPlan.domains}
+                      activePrincipleId={selectedPrincipleId}
+                      onSelectPrinciple={(principleId) => {
+                        setSelectedDomainId(null);
+                        setSelectedPrincipleId(principleId);
+                        setSidebarOpen(true);
+                      }}
+                    />
+                  )}
+                </div>
               ) : (
                 <div className="h-[320px] w-[320px]" />
               )}
@@ -978,7 +1005,10 @@ export default function WeekPlanPage() {
                 <span className="text-xs text-mutedText">{PLAN_COPY.maxDomains}</span>
               ) : null}
               {sidebarOpen ? (
-                <div className="w-full rounded-2xl border border-slate-200 bg-white p-4">
+                <div
+                  className="w-full rounded-2xl border border-slate-200 bg-white p-4"
+                  data-testid="selected-segment-panel"
+                >
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-semibold text-text">
                       {PLAN_COPY.taskPanelTitle}
@@ -1027,7 +1057,7 @@ export default function WeekPlanPage() {
                           No tasks under this principle yet.
                         </p>
                       ) : (
-                        <div className="mt-3 space-y-3">
+                        <div className="mt-3 space-y-3" data-testid="selected-segment-tasks">
                           {principleTasks.map((task) => (
                             <div
                               key={task.id}
@@ -1079,7 +1109,7 @@ export default function WeekPlanPage() {
                           {PLAN_COPY.taskPanelEmpty}
                         </p>
                       ) : (
-                        <div className="mt-3 space-y-3">
+                        <div className="mt-3 space-y-3" data-testid="selected-segment-tasks">
                           {selectedDomain.tasks.map((task) => (
                             <div
                               key={task.id}
@@ -1120,31 +1150,33 @@ export default function WeekPlanPage() {
               ) : null}
               <div className="flex flex-col items-center gap-4">
                 {weekPlan ? (
-                plotMode === 'domains' ? (
-                  <IkigaiWheelPlot
-                    domains={weekPlan.domains}
-                    activeDomainId={selectedDomainId}
-                    showSkeleton={!hasTasks}
-                    onSelectDomain={(domainId) => {
-                      setSelectedPrincipleId(null);
-                      setSelectedDomainId(domainId);
-                      setSidebarOpen(true);
-                    }}
-                  />
+                  <div data-testid="week-plot">
+                    {plotMode === 'domains' ? (
+                      <IkigaiWheelPlot
+                        domains={weekPlan.domains}
+                        activeDomainId={selectedDomainId}
+                        showSkeleton={!hasTasks}
+                        onSelectDomain={(domainId) => {
+                          setSelectedPrincipleId(null);
+                          setSelectedDomainId(domainId);
+                          setSidebarOpen(true);
+                        }}
+                      />
+                    ) : (
+                      <IkigaiPrinciplesPlot
+                        domains={weekPlan.domains}
+                        activePrincipleId={selectedPrincipleId}
+                        onSelectPrinciple={(principleId) => {
+                          setSelectedDomainId(null);
+                          setSelectedPrincipleId(principleId);
+                          setSidebarOpen(true);
+                        }}
+                      />
+                    )}
+                  </div>
                 ) : (
-                  <IkigaiPrinciplesPlot
-                    domains={weekPlan.domains}
-                    activePrincipleId={selectedPrincipleId}
-                    onSelectPrinciple={(principleId) => {
-                      setSelectedDomainId(null);
-                      setSelectedPrincipleId(principleId);
-                      setSidebarOpen(true);
-                    }}
-                  />
-                )
-              ) : (
-                <div className="h-[320px] w-[320px]" />
-              )}
+                  <div className="h-[320px] w-[320px]" />
+                )}
                 <div className="text-center">
                   <p className="text-sm font-medium text-text">
                     {hasTasks && largestDomain
@@ -1174,7 +1206,10 @@ export default function WeekPlanPage() {
                   ) : null}
                 </div>
                 {sidebarOpen ? (
-                  <div className="w-full rounded-2xl border border-slate-200 bg-white p-4">
+                  <div
+                    className="w-full rounded-2xl border border-slate-200 bg-white p-4"
+                    data-testid="selected-segment-panel"
+                  >
                     <div className="flex items-center justify-between">
                       <h3 className="text-sm font-semibold text-text">
                         {PLAN_COPY.taskPanelTitle}
@@ -1225,7 +1260,7 @@ export default function WeekPlanPage() {
                             No tasks under this principle yet.
                           </p>
                         ) : (
-                          <div className="mt-3 space-y-3">
+                          <div className="mt-3 space-y-3" data-testid="selected-segment-tasks">
                             {principleTasks.map((task) => (
                               <div
                                 key={task.id}
@@ -1277,7 +1312,7 @@ export default function WeekPlanPage() {
                             {PLAN_COPY.taskPanelEmpty}
                           </p>
                         ) : (
-                          <div className="mt-3 space-y-3">
+                          <div className="mt-3 space-y-3" data-testid="selected-segment-tasks">
                             {selectedDomain.tasks.map((task) => (
                               <div
                                 key={task.id}
@@ -1369,8 +1404,9 @@ export default function WeekPlanPage() {
             <button
               type="button"
               className="inline-flex items-center justify-center rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-text"
-              onClick={handleCompletePlanning}
+              onClick={() => void handleCompletePlanning()}
               disabled={!weekPlan}
+              data-testid="complete-planning"
             >
               {PLAN_COPY.completePlanning}
             </button>

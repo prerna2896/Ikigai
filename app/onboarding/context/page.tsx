@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { type Profile } from '@ikigai/core';
 import { getLocalRepository } from '@ikigai/storage';
 
 export default function OnboardingContextPage() {
@@ -11,20 +12,24 @@ export default function OnboardingContextPage() {
   > | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [profileName, setProfileName] = useState<string | null>(null);
+  const [nameInput, setNameInput] = useState('');
+  const [profile, setProfile] = useState<Profile | null>(null);
 
   useEffect(() => {
     try {
       const repo = getLocalRepository();
       setRepository(repo);
       Promise.all([repo.getProfile(), repo.getSettings()])
-        .then(([profile]) => {
-          if (!profile) {
-            router.replace('/onboarding/name');
+        .then(([profileRecord]) => {
+          if (!profileRecord) {
+            setProfile(null);
             return;
           }
-          const trimmedName = profile.name?.trim();
+          setProfile(profileRecord);
+          const trimmedName = profileRecord.name?.trim();
           const firstName = trimmedName ? trimmedName.split(/\s+/)[0] : '';
           setProfileName(firstName || null);
+          setNameInput(trimmedName || '');
         })
         .catch((error) => setStatus(String(error)));
     } catch (error) {
@@ -33,17 +38,43 @@ export default function OnboardingContextPage() {
   }, [router]);
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-8 px-6 py-16">
+    <main
+      className="mx-auto flex min-h-screen max-w-3xl flex-col gap-8 px-6 py-16"
+      data-testid="onboarding-context"
+    >
       <section className="rounded-2xl border border-slate-200 bg-surface p-8 shadow-sm">
         <div className="space-y-4">
-          <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
-            A quick pause
-          </p>
+          <div className="flex items-center justify-between">
+            <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
+              A quick pause
+            </p>
+            <button
+              type="button"
+              className="text-xs text-mutedText hover:text-text"
+              onClick={() => router.replace('/')}
+              data-testid="onboarding-home"
+            >
+              Home
+            </button>
+          </div>
           <h1 className="text-3xl font-semibold text-text">
             {profileName
               ? `${profileName}, a calm place to plan and recalibrate.`
               : 'A calm place to plan and recalibrate.'}
           </h1>
+          {!profile ? (
+            <label className="flex flex-col gap-2 text-sm text-mutedText">
+              What should we call you?
+              <input
+                type="text"
+                className="rounded-xl border border-slate-200 px-3 py-2 text-text"
+                value={nameInput}
+                onChange={(event) => setNameInput(event.target.value)}
+                placeholder="Your name"
+                data-testid="onboarding-name-input"
+              />
+            </label>
+          ) : null}
           <div className="space-y-3 text-sm text-mutedText">
             <p>
               This isn’t about doing more, or getting everything right. It’s
@@ -66,19 +97,33 @@ export default function OnboardingContextPage() {
               {status}
             </div>
           ) : null}
-          <div className="pt-2 flex items-center justify-between gap-3">
-            <button
-              type="button"
-              className="rounded-full border border-slate-300 px-4 py-2 text-sm text-text"
-              onClick={() => router.replace('/')}
-            >
-              Back
-            </button>
+          <div className="pt-2 flex items-center justify-end gap-3">
             <button
               type="button"
               className="inline-flex items-center rounded-full bg-accent px-5 py-2 text-sm font-medium text-white"
-              onClick={() => router.replace('/onboarding/tone')}
+              onClick={async () => {
+                if (!repository) {
+                  return;
+                }
+                const trimmed = nameInput.trim();
+                if (!profile && !trimmed) {
+                  setStatus('Please enter a name to continue.');
+                  return;
+                }
+                if (!profile && trimmed) {
+                  const nowIso = new Date().toISOString();
+                  await repository.saveProfile({
+                    id: crypto.randomUUID(),
+                    name: trimmed,
+                    reflections: [],
+                    createdAt: nowIso,
+                    updatedAt: nowIso,
+                  });
+                }
+                router.replace('/onboarding/tone');
+              }}
               disabled={!repository}
+              data-testid="onboarding-next"
             >
               Continue
             </button>

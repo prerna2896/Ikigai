@@ -160,7 +160,10 @@ export default function ProfilePage() {
   };
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-8 px-6 py-12">
+    <main
+      className="mx-auto flex min-h-screen max-w-3xl flex-col gap-8 px-6 py-12"
+      data-testid="profile-page"
+    >
       <header className="space-y-3">
         <div className="flex items-center justify-between">
           <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
