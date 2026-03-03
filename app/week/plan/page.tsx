@@ -7,6 +7,10 @@ import type { DomainTask, Settings, WeekPlan } from '@ikigai/core';
 import { getOpeningRemark, PROFESSION_COMMITMENT_LABELS } from '@ikigai/core';
 import { getLocalRepository } from '@ikigai/storage';
 import IkigaiWheelPlot from '../../../components/IkigaiWheelPlot';
+import IkigaiPrinciplesPlot, {
+  getPrincipleForDomain,
+  type IkigaiPrincipleId,
+} from '../../../components/IkigaiPrinciplesPlot';
 import { PLAN_COPY } from './copy';
 import {
   addDomainToPlan,
@@ -58,6 +62,8 @@ export default function WeekPlanPage() {
   > | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [weekPlan, setWeekPlan] = useState<WeekPlan | null>(null);
+  const [lastWeekPlan, setLastWeekPlan] = useState<WeekPlan | null>(null);
+  const [lastWeekTotals, setLastWeekTotals] = useState<Record<string, number>>({});
   const [status, setStatus] = useState<string | null>(null);
   const [taskTitle, setTaskTitle] = useState('');
   const [taskHours, setTaskHours] = useState('1');
@@ -66,6 +72,9 @@ export default function WeekPlanPage() {
   const [domainPickerTaskId, setDomainPickerTaskId] = useState<string | null>(null);
   const [newDomainName, setNewDomainName] = useState('');
   const [domainOverrides, setDomainOverrides] = useState<Record<string, string>>({});
+  const [plotMode, setPlotMode] = useState<'domains' | 'ikigai'>('domains');
+  const [selectedPrincipleId, setSelectedPrincipleId] =
+    useState<IkigaiPrincipleId | null>(null);
 
   useEffect(() => {
     try {
@@ -90,6 +99,12 @@ export default function WeekPlanPage() {
             preferNextWeek,
           );
           const weekEndISO = getWeekEndISO(weekStartISO);
+          const sortedPlans = [...plans].sort((a, b) =>
+            a.weekStartISO < b.weekStartISO ? 1 : -1,
+          );
+          const previousPlan = sortedPlans.find(
+            (candidate) => candidate.weekStartISO !== weekStartISO,
+          );
           const plan = await repo.getWeekPlan(weekStartISO);
           if (plan) {
             let normalized = applyDefaultDomainNames(plan);
@@ -112,6 +127,21 @@ export default function WeekPlanPage() {
             setWeekPlan(derived);
             setSelectedDomainId(null);
             setSidebarOpen(false);
+            if (previousPlan) {
+              const derivedPrevious = withDerivedPlannedHours(previousPlan);
+              setLastWeekPlan(derivedPrevious);
+              const previousLogs = await repo.getWeekLogs(previousPlan.id);
+              const totals: Record<string, number> = {};
+              previousLogs.forEach((log) => {
+                Object.entries(log.taskHours).forEach(([taskId, hours]) => {
+                  totals[taskId] = (totals[taskId] || 0) + hours;
+                });
+              });
+              setLastWeekTotals(totals);
+            } else {
+              setLastWeekPlan(null);
+              setLastWeekTotals({});
+            }
             return;
           }
           const freshPlan = createDefaultWeekPlan(
@@ -125,6 +155,21 @@ export default function WeekPlanPage() {
           setWeekPlan(derived);
           setSelectedDomainId(null);
           setSidebarOpen(false);
+          if (previousPlan) {
+            const derivedPrevious = withDerivedPlannedHours(previousPlan);
+            setLastWeekPlan(derivedPrevious);
+            const previousLogs = await repo.getWeekLogs(previousPlan.id);
+            const totals: Record<string, number> = {};
+            previousLogs.forEach((log) => {
+              Object.entries(log.taskHours).forEach(([taskId, hours]) => {
+                totals[taskId] = (totals[taskId] || 0) + hours;
+              });
+            });
+            setLastWeekTotals(totals);
+          } else {
+            setLastWeekPlan(null);
+            setLastWeekTotals({});
+          }
         })
         .catch((error) => setStatus(String(error)));
     } catch (error) {
@@ -180,6 +225,22 @@ export default function WeekPlanPage() {
     }
     return flattenTasks(weekPlan.domains);
   }, [weekPlan]);
+
+  const lastWeekTasks = useMemo(() => {
+    if (!lastWeekPlan) {
+      return [];
+    }
+    const tasks = lastWeekPlan.domains.flatMap((domain) =>
+      domain.tasks.map((task) => ({
+        id: task.id,
+        title: task.title,
+        plannedHours: task.plannedHours,
+        completedHours: lastWeekTotals[task.id] || 0,
+        domainName: domain.name,
+      })),
+    );
+    return tasks.sort((a, b) => b.plannedHours - a.plannedHours);
+  }, [lastWeekPlan, lastWeekTotals]);
 
   const hasTasks = taskList.some((item) => item.task.plannedHours > 0);
   const largestDomain =
@@ -435,6 +496,74 @@ export default function WeekPlanPage() {
       ? Math.max(0, planningCapacityHours - plannedTaskHours)
       : null;
 
+  const plotToggle = (
+    <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white p-1 text-xs text-mutedText">
+      <button
+        type="button"
+        className={`rounded-full px-3 py-1 text-xs font-medium ${
+          plotMode === 'domains' ? 'bg-accent text-white' : 'text-mutedText'
+        }`}
+        onClick={() => {
+          setPlotMode('domains');
+          setSelectedPrincipleId(null);
+        }}
+      >
+        Domains
+      </button>
+      <button
+        type="button"
+        className={`rounded-full px-3 py-1 text-xs font-medium ${
+          plotMode === 'ikigai' ? 'bg-accent text-white' : 'text-mutedText'
+        }`}
+        onClick={() => {
+          setPlotMode('ikigai');
+          setSelectedDomainId(null);
+        }}
+      >
+        Ikigai
+      </button>
+    </div>
+  );
+
+  const principleTotals = useMemo(() => {
+    if (!weekPlan) {
+      return [] as { id: IkigaiPrincipleId; label: string; hours: number }[];
+    }
+    const base: Record<IkigaiPrincipleId, number> = {
+      energy: 0,
+      growth: 0,
+      contribution: 0,
+      alignment: 0,
+    };
+    weekPlan.domains.forEach((domain) => {
+      const principle = getPrincipleForDomain(domain.name);
+      base[principle] += domain.plannedHours || 0;
+    });
+    return [
+      { id: 'energy', label: 'Energy', hours: base.energy },
+      { id: 'growth', label: 'Growth', hours: base.growth },
+      { id: 'contribution', label: 'Contribution', hours: base.contribution },
+      { id: 'alignment', label: 'Alignment', hours: base.alignment },
+    ];
+  }, [weekPlan]);
+
+  const principleTasks = useMemo(() => {
+    if (!weekPlan || !selectedPrincipleId) {
+      return [] as { id: string; title: string; hours: number; domainName: string }[];
+    }
+    const tasks = weekPlan.domains.flatMap((domain) =>
+      getPrincipleForDomain(domain.name) === selectedPrincipleId
+        ? domain.tasks.map((task) => ({
+            id: task.id,
+            title: task.title,
+            hours: task.plannedHours,
+            domainName: domain.name,
+          }))
+        : [],
+    );
+    return tasks.sort((a, b) => b.hours - a.hours);
+  }, [weekPlan, selectedPrincipleId]);
+
   return (
     <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-8 px-6 py-12">
       <header className="space-y-3">
@@ -477,6 +606,7 @@ export default function WeekPlanPage() {
 
       {!planningComplete ? (
         <section className="rounded-2xl border border-slate-200 bg-surface p-6 shadow-sm">
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
         <div className="space-y-4">
           <div className="space-y-2">
             <h2 className="text-lg font-semibold text-text">{PLAN_COPY.promptTitle}</h2>
@@ -737,7 +867,44 @@ export default function WeekPlanPage() {
             <p className="text-xs text-mutedText">{PLAN_COPY.domainAssignHelper}</p>
           </div>
         </div>
-        </section>
+        {lastWeekPlan ? (
+          <aside className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-text">
+            <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
+              Last week
+            </p>
+            <p className="mt-2 text-sm font-medium text-text">
+              Tasks & completion
+            </p>
+            <p className="mt-1 text-xs text-mutedText">
+              A quick reference from the previous plan.
+            </p>
+            <div className="mt-4 space-y-3">
+              {lastWeekTasks.length === 0 ? (
+                <p className="text-xs text-mutedText">
+                  No tasks logged last week.
+                </p>
+              ) : (
+                lastWeekTasks.map((task) => (
+                  <div
+                    key={task.id}
+                    className="rounded-xl border border-slate-200 px-3 py-2"
+                  >
+                    <div className="flex items-center justify-between text-xs text-mutedText">
+                      <span className="font-medium text-text">{task.title}</span>
+                      <span>{task.domainName}</span>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between text-xs text-mutedText">
+                      <span>{Math.round(task.plannedHours)}h planned</span>
+                      <span>{Math.round(task.completedHours)}h completed</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </aside>
+        ) : null}
+        </div>
+      </section>
       ) : null}
 
       {planningComplete ? (
@@ -750,25 +917,46 @@ export default function WeekPlanPage() {
                 </h2>
                 <p className="text-sm text-mutedText">{PLAN_COPY.plotSubtext}</p>
               </div>
-              <button
-                type="button"
-                className="inline-flex items-center gap-2 rounded-full border border-slate-300 px-3 py-1 text-xs text-text"
-                onClick={handleReopenPlanning}
-              >
-                ↺ Update plan
-              </button>
+              <div className="flex flex-col items-end gap-2">
+                {plotToggle}
+                {plotMode === 'ikigai' ? (
+                  <p className="text-xs text-mutedText">
+                    Domains roll up into Energy, Growth, Contribution, Alignment.
+                  </p>
+                ) : null}
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-300 px-3 py-1 text-xs text-text"
+                  onClick={handleReopenPlanning}
+                >
+                  ↺ Update plan
+                </button>
+              </div>
             </div>
             <div className="flex flex-col items-center gap-4">
               {weekPlan ? (
-                <IkigaiWheelPlot
-                  domains={weekPlan.domains}
-                  activeDomainId={selectedDomainId}
-                  showSkeleton={!hasTasks}
-                  onSelectDomain={(domainId) => {
-                    setSelectedDomainId(domainId);
-                    setSidebarOpen(true);
-                  }}
-                />
+                plotMode === 'domains' ? (
+                  <IkigaiWheelPlot
+                    domains={weekPlan.domains}
+                    activeDomainId={selectedDomainId}
+                    showSkeleton={!hasTasks}
+                    onSelectDomain={(domainId) => {
+                      setSelectedPrincipleId(null);
+                      setSelectedDomainId(domainId);
+                      setSidebarOpen(true);
+                    }}
+                  />
+                ) : (
+                  <IkigaiPrinciplesPlot
+                    domains={weekPlan.domains}
+                    activePrincipleId={selectedPrincipleId}
+                    onSelectPrinciple={(principleId) => {
+                      setSelectedDomainId(null);
+                      setSelectedPrincipleId(principleId);
+                      setSidebarOpen(true);
+                    }}
+                  />
+                )
               ) : (
                 <div className="h-[320px] w-[320px]" />
               )}
@@ -800,59 +988,116 @@ export default function WeekPlanPage() {
                       className="text-xs text-mutedText hover:text-text"
                       onClick={() => {
                         setSelectedDomainId(null);
+                        setSelectedPrincipleId(null);
                         setSidebarOpen(false);
                       }}
                     >
                       ✕ Close
                     </button>
                   </div>
-                  {selectedDomain ? (
-                    <button
-                      type="button"
-                      className="mt-2 text-xs text-mutedText hover:text-text"
-                      onClick={() => setSelectedDomainId(null)}
-                    >
-                      ← Back to domains
-                    </button>
-                  ) : null}
-                  {!selectedDomain ? (
-                    <div className="mt-3 space-y-2">
-                      {weekPlan?.domains.map((domain) => (
+                  {plotMode === 'ikigai' ? (
+                    <>
+                      {selectedPrincipleId ? (
                         <button
-                          key={domain.id}
                           type="button"
-                          className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-sm text-text"
-                          onClick={() => setSelectedDomainId(domain.id)}
+                          className="mt-2 text-xs text-mutedText hover:text-text"
+                          onClick={() => setSelectedPrincipleId(null)}
                         >
-                          <span className="font-medium">{domain.name}</span>
-                          <span className="text-xs text-mutedText">
-                            {Math.round(domain.plannedHours)}h
-                          </span>
+                          ← Back to principles
                         </button>
-                      ))}
-                    </div>
-                  ) : selectedDomain.tasks.length === 0 ? (
-                    <p className="mt-3 text-sm text-mutedText">
-                      {PLAN_COPY.taskPanelEmpty}
-                    </p>
-                  ) : (
-                    <div className="mt-3 space-y-3">
-                      {selectedDomain.tasks.map((task) => (
-                        <div
-                          key={task.id}
-                          className="rounded-xl border border-slate-200 bg-white px-3 py-2"
-                        >
-                          <div className="text-sm font-medium text-text">
-                            {task.title}
-                          </div>
-                          <div className="mt-2 text-xs text-mutedText">
-                            <span className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-text">
-                              {task.plannedHours}h
-                            </span>
-                          </div>
+                      ) : null}
+                      {!selectedPrincipleId ? (
+                        <div className="mt-3 space-y-2">
+                          {principleTotals.map((principle) => (
+                            <button
+                              key={principle.id}
+                              type="button"
+                              className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-sm text-text"
+                              onClick={() => setSelectedPrincipleId(principle.id)}
+                            >
+                              <span className="font-medium">{principle.label}</span>
+                              <span className="text-xs text-mutedText">
+                                {Math.round(principle.hours)}h
+                              </span>
+                            </button>
+                          ))}
                         </div>
-                      ))}
-                    </div>
+                      ) : principleTasks.length === 0 ? (
+                        <p className="mt-3 text-sm text-mutedText">
+                          No tasks under this principle yet.
+                        </p>
+                      ) : (
+                        <div className="mt-3 space-y-3">
+                          {principleTasks.map((task) => (
+                            <div
+                              key={task.id}
+                              className="rounded-xl border border-slate-200 bg-white px-3 py-2"
+                            >
+                              <div className="text-sm font-medium text-text">
+                                {task.title}
+                              </div>
+                              <div className="mt-2 flex items-center justify-between text-xs text-mutedText">
+                                <span>{task.domainName}</span>
+                                <span className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-text">
+                                  {task.hours}h
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      {selectedDomain ? (
+                        <button
+                          type="button"
+                          className="mt-2 text-xs text-mutedText hover:text-text"
+                          onClick={() => setSelectedDomainId(null)}
+                        >
+                          ← Back to domains
+                        </button>
+                      ) : null}
+                      {!selectedDomain ? (
+                        <div className="mt-3 space-y-2">
+                          {weekPlan?.domains.map((domain) => (
+                            <button
+                              key={domain.id}
+                              type="button"
+                              className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-sm text-text"
+                              onClick={() => setSelectedDomainId(domain.id)}
+                            >
+                              <span className="font-medium">{domain.name}</span>
+                              <span className="text-xs text-mutedText">
+                                {Math.round(domain.plannedHours)}h
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      ) : selectedDomain.tasks.length === 0 ? (
+                        <p className="mt-3 text-sm text-mutedText">
+                          {PLAN_COPY.taskPanelEmpty}
+                        </p>
+                      ) : (
+                        <div className="mt-3 space-y-3">
+                          {selectedDomain.tasks.map((task) => (
+                            <div
+                              key={task.id}
+                              className="rounded-xl border border-slate-200 bg-white px-3 py-2"
+                            >
+                              <div className="text-sm font-medium text-text">
+                                {task.title}
+                              </div>
+                              <div className="mt-2 text-xs text-mutedText">
+                                <span className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-text">
+                                  {task.plannedHours}h
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               ) : null}
@@ -867,20 +1112,39 @@ export default function WeekPlanPage() {
                 <h2 className="text-lg font-semibold text-text">{PLAN_COPY.plotHeader}</h2>
                 <p className="text-sm text-mutedText">{PLAN_COPY.plotSubtext}</p>
               </div>
+              {plotToggle}
+              {plotMode === 'ikigai' ? (
+                <p className="text-xs text-mutedText">
+                  Domains roll up into Energy, Growth, Contribution, Alignment.
+                </p>
+              ) : null}
               <div className="flex flex-col items-center gap-4">
                 {weekPlan ? (
+                plotMode === 'domains' ? (
                   <IkigaiWheelPlot
                     domains={weekPlan.domains}
                     activeDomainId={selectedDomainId}
                     showSkeleton={!hasTasks}
                     onSelectDomain={(domainId) => {
+                      setSelectedPrincipleId(null);
                       setSelectedDomainId(domainId);
                       setSidebarOpen(true);
                     }}
                   />
                 ) : (
-                  <div className="h-[320px] w-[320px]" />
-                )}
+                  <IkigaiPrinciplesPlot
+                    domains={weekPlan.domains}
+                    activePrincipleId={selectedPrincipleId}
+                    onSelectPrinciple={(principleId) => {
+                      setSelectedDomainId(null);
+                      setSelectedPrincipleId(principleId);
+                      setSidebarOpen(true);
+                    }}
+                  />
+                )
+              ) : (
+                <div className="h-[320px] w-[320px]" />
+              )}
                 <div className="text-center">
                   <p className="text-sm font-medium text-text">
                     {hasTasks && largestDomain
@@ -920,102 +1184,163 @@ export default function WeekPlanPage() {
                         className="text-xs text-mutedText hover:text-text"
                         onClick={() => {
                           setSelectedDomainId(null);
+                          setSelectedPrincipleId(null);
                           setSidebarOpen(false);
                         }}
                       >
                         ✕ Close
                       </button>
                     </div>
-                    {selectedDomain ? (
-                      <button
-                        type="button"
-                        className="mt-2 text-xs text-mutedText hover:text-text"
-                        onClick={() => setSelectedDomainId(null)}
-                      >
-                        ← Back to domains
-                      </button>
-                    ) : null}
-                    {!selectedDomain ? (
-                      <div className="mt-3 space-y-2">
-                        {weekPlan?.domains.map((domain) => (
+                    {plotMode === 'ikigai' ? (
+                      <>
+                        {selectedPrincipleId ? (
                           <button
-                            key={domain.id}
                             type="button"
-                            className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-sm text-text"
-                            onClick={() => setSelectedDomainId(domain.id)}
+                            className="mt-2 text-xs text-mutedText hover:text-text"
+                            onClick={() => setSelectedPrincipleId(null)}
                           >
-                            <span className="font-medium">{domain.name}</span>
-                            <span className="text-xs text-mutedText">
-                              {Math.round(domain.plannedHours)}h
-                            </span>
+                            ← Back to principles
                           </button>
-                        ))}
-                      </div>
-                    ) : selectedDomain.tasks.length === 0 ? (
-                      <p className="mt-3 text-sm text-mutedText">
-                        {PLAN_COPY.taskPanelEmpty}
-                      </p>
-                    ) : (
-                      <div className="mt-3 space-y-3">
-                        {selectedDomain.tasks.map((task) => (
-                          <div
-                            key={task.id}
-                            className="rounded-xl border border-slate-200 bg-white px-3 py-2"
-                          >
-                            <div className="text-sm font-medium text-text">
-                              {task.title}
-                            </div>
-                            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-mutedText">
-                              <span className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-text">
-                                {task.plannedHours}h
-                              </span>
-                              <div className="relative">
-                                <button
-                                  type="button"
-                                  className="rounded-full border border-slate-200 px-3 py-1 text-xs text-mutedText"
-                                  onClick={() =>
-                                    setDomainPickerTaskId(
-                                      domainPickerTaskId === task.id ? null : task.id,
-                                    )
-                                  }
-                                >
-                                  {selectedDomain.name} ▾
-                                </button>
-                                {domainPickerTaskId === task.id ? (
-                                  <div className="absolute left-0 top-9 z-10 w-52 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
-                                    <p className="px-2 pb-1 text-xs uppercase tracking-[0.2em] text-mutedText">
-                                      {PLAN_COPY.domainPickerLabel}
-                                    </p>
-                                    <div className="max-h-40 space-y-1 overflow-auto">
-                                      {weekPlan?.domains.map((option) => (
-                                        <button
-                                          key={option.id}
-                                          type="button"
-                                          className={`flex w-full items-center justify-between rounded-lg px-2 py-1 text-xs ${
-                                            option.id === selectedDomain.id
-                                              ? 'bg-slate-100 text-text'
-                                              : 'text-mutedText hover:bg-slate-50'
-                                          }`}
-                                          onClick={() =>
-                                            void handleAssignTaskDomain(
-                                              task.id,
-                                              selectedDomain.id,
-                                              option.id,
-                                            )
-                                          }
-                                        >
-                                          {option.name}
-                                          {option.id === selectedDomain.id ? '•' : null}
-                                        </button>
-                                      ))}
-                                    </div>
-                                  </div>
-                                ) : null}
-                              </div>
-                            </div>
+                        ) : null}
+                        {!selectedPrincipleId ? (
+                          <div className="mt-3 space-y-2">
+                            {principleTotals.map((principle) => (
+                              <button
+                                key={principle.id}
+                                type="button"
+                                className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-sm text-text"
+                                onClick={() => setSelectedPrincipleId(principle.id)}
+                              >
+                                <span className="font-medium">
+                                  {principle.label}
+                                </span>
+                                <span className="text-xs text-mutedText">
+                                  {Math.round(principle.hours)}h
+                                </span>
+                              </button>
+                            ))}
                           </div>
-                        ))}
-                      </div>
+                        ) : principleTasks.length === 0 ? (
+                          <p className="mt-3 text-sm text-mutedText">
+                            No tasks under this principle yet.
+                          </p>
+                        ) : (
+                          <div className="mt-3 space-y-3">
+                            {principleTasks.map((task) => (
+                              <div
+                                key={task.id}
+                                className="rounded-xl border border-slate-200 bg-white px-3 py-2"
+                              >
+                                <div className="text-sm font-medium text-text">
+                                  {task.title}
+                                </div>
+                                <div className="mt-2 flex items-center justify-between text-xs text-mutedText">
+                                  <span>{task.domainName}</span>
+                                  <span className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-text">
+                                    {task.hours}h
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        {selectedDomain ? (
+                          <button
+                            type="button"
+                            className="mt-2 text-xs text-mutedText hover:text-text"
+                            onClick={() => setSelectedDomainId(null)}
+                          >
+                            ← Back to domains
+                          </button>
+                        ) : null}
+                        {!selectedDomain ? (
+                          <div className="mt-3 space-y-2">
+                            {weekPlan?.domains.map((domain) => (
+                              <button
+                                key={domain.id}
+                                type="button"
+                                className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-sm text-text"
+                                onClick={() => setSelectedDomainId(domain.id)}
+                              >
+                                <span className="font-medium">{domain.name}</span>
+                                <span className="text-xs text-mutedText">
+                                  {Math.round(domain.plannedHours)}h
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        ) : selectedDomain.tasks.length === 0 ? (
+                          <p className="mt-3 text-sm text-mutedText">
+                            {PLAN_COPY.taskPanelEmpty}
+                          </p>
+                        ) : (
+                          <div className="mt-3 space-y-3">
+                            {selectedDomain.tasks.map((task) => (
+                              <div
+                                key={task.id}
+                                className="rounded-xl border border-slate-200 bg-white px-3 py-2"
+                              >
+                                <div className="text-sm font-medium text-text">
+                                  {task.title}
+                                </div>
+                                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-mutedText">
+                                  <span className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-text">
+                                    {task.plannedHours}h
+                                  </span>
+                                  <div className="relative">
+                                    <button
+                                      type="button"
+                                      className="rounded-full border border-slate-200 px-3 py-1 text-xs text-mutedText"
+                                      onClick={() =>
+                                        setDomainPickerTaskId(
+                                          domainPickerTaskId === task.id ? null : task.id,
+                                        )
+                                      }
+                                    >
+                                      {selectedDomain.name} ▾
+                                    </button>
+                                    {domainPickerTaskId === task.id ? (
+                                      <div className="absolute left-0 top-9 z-10 w-52 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
+                                        <p className="px-2 pb-1 text-xs uppercase tracking-[0.2em] text-mutedText">
+                                          {PLAN_COPY.domainPickerLabel}
+                                        </p>
+                                        <div className="max-h-40 space-y-1 overflow-auto">
+                                          {weekPlan?.domains.map((option) => (
+                                            <button
+                                              key={option.id}
+                                              type="button"
+                                              className={`flex w-full items-center justify-between rounded-lg px-2 py-1 text-xs ${
+                                                option.id === selectedDomain.id
+                                                  ? 'bg-slate-100 text-text'
+                                                  : 'text-mutedText hover:bg-slate-50'
+                                              }`}
+                                              onClick={() =>
+                                                void handleAssignTaskDomain(
+                                                  task.id,
+                                                  selectedDomain.id,
+                                                  option.id,
+                                                )
+                                              }
+                                            >
+                                              {option.name}
+                                              {option.id === selectedDomain.id
+                                                ? '•'
+                                                : null}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 ) : null}

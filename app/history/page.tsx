@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import type { Settings, WeekLogEntry, WeekNote, WeekPlan } from '@ikigai/core';
+import { getPrincipleForDomain, type IkigaiPrincipleId } from '../../components/IkigaiPrinciplesPlot';
 import { getLocalRepository } from '@ikigai/storage';
 import { getWeekEndISO, withDerivedPlannedHours } from '../week/plan/planUtils';
 
@@ -19,6 +20,31 @@ const addDaysISO = (isoDate: string, days: number) => {
   const day = `${date.getDate()}`.padStart(2, '0');
   return `${year}-${month}-${day}`;
 };
+
+const getWeekStartISOForDate = (
+  date: Date,
+  weekStartDay: Settings['weekStartDay'],
+) => {
+  const target = {
+    sunday: 0,
+    monday: 1,
+    tuesday: 2,
+    wednesday: 3,
+    thursday: 4,
+    friday: 5,
+    saturday: 6,
+  }[weekStartDay];
+  const day = date.getDay();
+  const diff = (day - target + 7) % 7;
+  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  start.setDate(start.getDate() - diff);
+  const year = start.getFullYear();
+  const month = `${start.getMonth() + 1}`.padStart(2, '0');
+  const dayOfMonth = `${start.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${dayOfMonth}`;
+};
+
+const toDateInputValue = (isoDate: string | null) => isoDate ?? '';
 
 const hashString = (value: string) => {
   let hash = 0;
@@ -38,6 +64,16 @@ const domainPalette = [
   { r: 214, g: 196, b: 140 },
   { r: 150, g: 166, b: 188 },
 ];
+
+const IKIGAI_COLORS: Record<
+  'energy' | 'growth' | 'contribution' | 'alignment',
+  { r: number; g: number; b: number }
+> = {
+  energy: { r: 127, g: 183, b: 173 },
+  growth: { r: 166, g: 190, b: 132 },
+  contribution: { r: 208, g: 161, b: 93 },
+  alignment: { r: 179, g: 140, b: 182 },
+};
 
 const getDomainColor = (name: string) => {
   const color = domainPalette[hashString(name) % domainPalette.length];
@@ -155,6 +191,8 @@ export default function HistoryPage() {
     null,
   );
   const [showSavedNote, setShowSavedNote] = useState(false);
+  const [rangeStartId, setRangeStartId] = useState<string | null>(null);
+  const [rangeEndId, setRangeEndId] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -196,7 +234,6 @@ export default function HistoryPage() {
     if (!selectedHistoryWeekId) {
       return;
     }
-    setShowSavedNote(false);
     try {
       const repo = getLocalRepository();
       repo
@@ -204,6 +241,7 @@ export default function HistoryPage() {
         .then((note) => {
           setWeekNote(note);
           setNoteDraft(note?.note ?? '');
+          setShowSavedNote(Boolean(note?.note));
         })
         .catch((error) => setStatus(String(error)));
     } catch (error) {
@@ -247,6 +285,7 @@ export default function HistoryPage() {
           (sum, task) => sum + (completedByTask[task.id] || 0),
           0,
         );
+        const cappedCompletedTotal = Math.min(168, completedTotal);
         const domainTotals: Record<
           string,
           { planned: number; completed: number }
@@ -262,13 +301,27 @@ export default function HistoryPage() {
           weekId: plan.id,
           rangeLabel: formatRange(plan, timeZone),
           plannedTotal,
-          completedTotal,
+          completedTotal: cappedCompletedTotal,
           adherence:
-            plannedTotal > 0 ? completedTotal / plannedTotal : 0,
+            plannedTotal > 0 ? cappedCompletedTotal / plannedTotal : 0,
           domainTotals,
         };
       });
   }, [weekPlans, weekLogsByWeek, timeZone]);
+
+  useEffect(() => {
+    if (!historySummaries.length) {
+      setRangeStartId(null);
+      setRangeEndId(null);
+      return;
+    }
+    setRangeStartId((prev) => prev ?? historySummaries[historySummaries.length - 1].weekId);
+    setRangeEndId((prev) => prev ?? historySummaries[0].weekId);
+  }, [historySummaries]);
+
+  const orderedSummariesAsc = useMemo(() => {
+    return historySummaries.slice().reverse();
+  }, [historySummaries]);
 
   const selectedSummary = useMemo(() => {
     if (!selectedHistoryWeekId) {
@@ -280,6 +333,60 @@ export default function HistoryPage() {
       null
     );
   }, [historySummaries, selectedHistoryWeekId]);
+
+  const domainAlignment = useMemo(() => {
+    if (!selectedSummary) {
+      return [];
+    }
+    return Object.entries(selectedSummary.domainTotals)
+      .map(([domainName, totals]) => {
+        const completion =
+          totals.planned > 0 ? Math.min(1, totals.completed / totals.planned) : 0;
+        return {
+          name: domainName,
+          planned: totals.planned,
+          completed: totals.completed,
+          completion,
+        };
+      })
+      .sort((a, b) => b.planned - a.planned);
+  }, [selectedSummary]);
+
+  const ikigaiAlignment = useMemo(() => {
+    if (!selectedSummary) {
+      return [];
+    }
+    const totals: Record<IkigaiPrincipleId, { planned: number; completed: number }> =
+      {
+        energy: { planned: 0, completed: 0 },
+        growth: { planned: 0, completed: 0 },
+        contribution: { planned: 0, completed: 0 },
+        alignment: { planned: 0, completed: 0 },
+      };
+    Object.entries(selectedSummary.domainTotals).forEach(([domainName, values]) => {
+      const key = getPrincipleForDomain(domainName);
+      totals[key].planned += values.planned;
+      totals[key].completed += values.completed;
+    });
+    const labels: Record<IkigaiPrincipleId, string> = {
+      energy: 'Energy',
+      growth: 'Growth',
+      contribution: 'Contribution',
+      alignment: 'Alignment',
+    };
+    return (Object.keys(totals) as IkigaiPrincipleId[]).map((key) => {
+      const entry = totals[key];
+      const completion =
+        entry.planned > 0 ? Math.min(1, entry.completed / entry.planned) : 0;
+      return {
+        id: key,
+        label: labels[key],
+        planned: entry.planned,
+        completed: entry.completed,
+        completion,
+      };
+    });
+  }, [selectedSummary]);
 
   const currentWeekId = useMemo(() => weekPlans[0]?.id ?? null, [weekPlans]);
   const isCurrentWeek = selectedSummary?.weekId === currentWeekId;
@@ -330,13 +437,43 @@ export default function HistoryPage() {
       .sort((a, b) => b.plannedTotal - a.plannedTotal);
   }, [historySummaries]);
 
-  const overallAdherence = useMemo(() => {
-    if (!historySummaries.length) {
-      return 0;
+  const lastWeekSummary = historySummaries[1] ?? historySummaries[0] ?? null;
+
+  const lastWeekDomainStats = useMemo(() => {
+    if (!lastWeekSummary) {
+      return [];
     }
-    const total = historySummaries.reduce((sum, summary) => sum + summary.adherence, 0);
-    return total / historySummaries.length;
-  }, [historySummaries]);
+    return Object.entries(lastWeekSummary.domainTotals)
+      .map(([name, totals]) => {
+        const completion =
+          totals.planned > 0 ? totals.completed / totals.planned : 0;
+        return {
+          name,
+          planned: totals.planned,
+          completed: totals.completed,
+          completion,
+        };
+      })
+      .sort((a, b) => b.planned - a.planned);
+  }, [lastWeekSummary]);
+
+  const lastWeekBestMatch = useMemo(() => {
+    if (lastWeekDomainStats.length === 0) {
+      return null;
+    }
+    return lastWeekDomainStats.reduce((best, current) =>
+      current.completion > best.completion ? current : best,
+    );
+  }, [lastWeekDomainStats]);
+
+  const lastWeekUnderMatch = useMemo(() => {
+    if (lastWeekDomainStats.length === 0) {
+      return null;
+    }
+    return lastWeekDomainStats.reduce((worst, current) =>
+      current.completion < worst.completion ? current : worst,
+    );
+  }, [lastWeekDomainStats]);
 
   const bestWeek = useMemo(() => {
     if (!historySummaries.length) {
@@ -389,18 +526,36 @@ export default function HistoryPage() {
 
   const weeklySeries = useMemo(() => {
     const ordered = historySummaries.slice().reverse();
-    const points = ordered.map((summary, index) => ({
+    const startIndex = rangeStartId
+      ? ordered.findIndex((summary) => summary.weekId === rangeStartId)
+      : 0;
+    const endIndex = rangeEndId
+      ? ordered.findIndex((summary) => summary.weekId === rangeEndId)
+      : ordered.length - 1;
+    const from = Math.max(0, Math.min(startIndex, endIndex));
+    const to = Math.max(0, Math.max(startIndex, endIndex));
+    const sliced = ordered.slice(from, to + 1);
+    const points = sliced.map((summary, index) => ({
       index,
       label: summary.rangeLabel,
       planned: summary.plannedTotal,
       completed: summary.completedTotal,
     }));
+    const totalWeekHours = 168;
+    const baselineAvailable = settings
+      ? Math.max(
+          0,
+          totalWeekHours -
+            settings.sleepHoursPerDay * 7 -
+            settings.maintenanceHoursPerDay * 7,
+        )
+      : null;
     const maxHours = points.reduce(
       (max, point) => Math.max(max, point.planned, point.completed),
-      0,
+      totalWeekHours,
     );
-    return { points, maxHours };
-  }, [historySummaries]);
+    return { points, maxHours, totalWeekHours, baselineAvailable };
+  }, [historySummaries, settings, rangeStartId, rangeEndId]);
 
   const mostOvercommitted = useMemo(() => {
     return domainInsights
@@ -431,6 +586,7 @@ export default function HistoryPage() {
       };
       await repo.saveWeekNote(entry);
       setWeekNote(entry);
+      setNoteDraft(entry.note);
       setShowSavedNote(true);
       setStatus('Note saved.');
       window.setTimeout(() => setStatus(null), 1500);
@@ -475,58 +631,52 @@ export default function HistoryPage() {
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <div className="rounded-2xl border border-slate-200 bg-white p-4">
             <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
-              Follow-through
+              Last week follow-through
             </p>
             <p className="mt-2 text-2xl font-semibold text-text">
-              {Math.round(overallAdherence * 100)}%
+              {Math.round((lastWeekSummary?.adherence ?? 0) * 100)}%
             </p>
             <p className="text-xs text-mutedText">
-              Average of planned vs. logged.
+              {lastWeekSummary?.rangeLabel ?? 'Most recent week'}
             </p>
-            <div className="mt-3 h-2 w-full rounded-full bg-slate-100">
-              <div
-                className="h-2 rounded-full bg-accent"
-                style={{ width: `${Math.round(overallAdherence * 100)}%` }}
-              />
-            </div>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-white p-4">
             <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
-              Steadiest domain
+              Most planned domain
             </p>
             <p className="mt-2 text-lg font-semibold text-text">
-              {mostSteadyDomain?.domainName ?? '—'}
+              {lastWeekDomainStats[0]?.name ?? '—'}
             </p>
             <p className="text-xs text-mutedText">
-              {mostSteadyDomain
-                ? `${Math.round(mostSteadyDomain.avg * 100)}% avg`
+              {lastWeekDomainStats[0]
+                ? `${Math.round(lastWeekDomainStats[0].planned)}h planned`
                 : 'No data yet.'}
             </p>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-white p-4">
             <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
-              Often underplanned
+              Best matched domain
             </p>
             <p className="mt-2 text-lg font-semibold text-text">
-              {mostUndercommitted?.domainName ?? '—'}
+              {lastWeekBestMatch?.name ?? '—'}
             </p>
             <p className="text-xs text-mutedText">
-              {mostUndercommitted
-                ? `${Math.round(mostUndercommitted.avg * 100)}% avg`
-                : 'No pattern yet.'}
+              {lastWeekBestMatch
+                ? `${Math.round(lastWeekBestMatch.completion * 100)}% completed`
+                : 'No data yet.'}
             </p>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-white p-4">
             <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
-              Often overplanned
+              Most under‑matched
             </p>
             <p className="mt-2 text-lg font-semibold text-text">
-              {mostOvercommitted?.domainName ?? '—'}
+              {lastWeekUnderMatch?.name ?? '—'}
             </p>
             <p className="text-xs text-mutedText">
-              {mostOvercommitted
-                ? `${Math.round(mostOvercommitted.avg * 100)}% avg`
-                : 'No pattern yet.'}
+              {lastWeekUnderMatch
+                ? `${Math.round(lastWeekUnderMatch.completion * 100)}% completed`
+                : 'No data yet.'}
             </p>
           </div>
         </div>
@@ -540,9 +690,55 @@ export default function HistoryPage() {
                 <h2 className="text-sm font-semibold text-text">
                   Weekly time series
                 </h2>
-                <span className="text-xs text-mutedText">
-                  All recent weeks
-                </span>
+                <div className="flex items-center gap-2 text-xs text-mutedText">
+                  <label className="flex items-center gap-2">
+                    <span>From</span>
+                    <input
+                      type="date"
+                      className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-text"
+                      value={toDateInputValue(rangeStartId)}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        if (!value) {
+                          return;
+                        }
+                        const weekStart = getWeekStartISOForDate(
+                          new Date(`${value}T00:00:00`),
+                          settings?.weekStartDay || 'sunday',
+                        );
+                        const match =
+                          [...orderedSummariesAsc]
+                            .reverse()
+                            .find((summary) => summary.weekId <= weekStart) ??
+                          orderedSummariesAsc[0];
+                        setRangeStartId(match?.weekId ?? null);
+                      }}
+                    />
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <span>To</span>
+                    <input
+                      type="date"
+                      className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-text"
+                      value={toDateInputValue(rangeEndId)}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        if (!value) {
+                          return;
+                        }
+                        const weekStart = getWeekStartISOForDate(
+                          new Date(`${value}T00:00:00`),
+                          settings?.weekStartDay || 'sunday',
+                        );
+                        const match =
+                          orderedSummariesAsc.find(
+                            (summary) => summary.weekId >= weekStart,
+                          ) ?? orderedSummariesAsc[orderedSummariesAsc.length - 1];
+                        setRangeEndId(match?.weekId ?? null);
+                      }}
+                    />
+                  </label>
+                </div>
               </div>
               <p className="mt-1 text-xs text-mutedText">
                 Planned vs. completed hours across the past weeks.
@@ -604,6 +800,40 @@ export default function HistoryPage() {
                               stroke="#e2e8f0"
                               strokeWidth="1"
                             />
+                            <line
+                              x1={paddingX}
+                              y1={
+                                paddingY +
+                                (1 - weeklySeries.totalWeekHours / maxValue) * height
+                              }
+                              x2={paddingX + width}
+                              y2={
+                                paddingY +
+                                (1 - weeklySeries.totalWeekHours / maxValue) * height
+                              }
+                              stroke="#cbd5f5"
+                              strokeWidth="1.5"
+                              strokeDasharray="4 4"
+                            />
+                            {weeklySeries.baselineAvailable !== null ? (
+                              <line
+                                x1={paddingX}
+                                y1={
+                                  paddingY +
+                                  (1 - weeklySeries.baselineAvailable / maxValue) *
+                                    height
+                                }
+                                x2={paddingX + width}
+                                y2={
+                                  paddingY +
+                                  (1 - weeklySeries.baselineAvailable / maxValue) *
+                                    height
+                                }
+                                stroke="#c7d2c9"
+                                strokeWidth="1.5"
+                                strokeDasharray="3 5"
+                              />
+                            ) : null}
                             <polyline
                               fill="none"
                               stroke="url(#plannedLine)"
@@ -650,6 +880,26 @@ export default function HistoryPage() {
                       })()}
                     </svg>
                   </div>
+                  <div
+                    className="mt-3 grid gap-2 text-[11px] text-mutedText"
+                    style={{
+                      gridTemplateColumns: `repeat(${weeklySeries.points.length}, minmax(0, 1fr))`,
+                    }}
+                  >
+                    {weeklySeries.points.map((point) => {
+                      const shortLabel =
+                        point.label.split('–')[0]?.trim() || point.label;
+                      return (
+                        <span
+                          key={point.label}
+                          className="text-center"
+                          title={point.label}
+                        >
+                          {shortLabel}
+                        </span>
+                      );
+                    })}
+                  </div>
                   <div className="mt-3 flex items-center justify-between text-[11px] text-mutedText">
                     <span className="inline-flex items-center gap-2">
                       <span className="h-2 w-2 rounded-full bg-[#7f9f97]" />
@@ -659,6 +909,19 @@ export default function HistoryPage() {
                       <span className="h-2 w-2 rounded-full bg-[#5f6f8f]" />
                       Completed hours
                     </span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-4 text-[11px] text-mutedText">
+                    <span className="inline-flex items-center gap-2">
+                      <span className="h-2 w-3 rounded-sm bg-[#cbd5f5]" />
+                      Total week: {weeklySeries.totalWeekHours}h
+                    </span>
+                    {weeklySeries.baselineAvailable !== null ? (
+                      <span className="inline-flex items-center gap-2">
+                        <span className="h-2 w-3 rounded-sm bg-[#c7d2c9]" />
+                        After sleep + maintenance:{' '}
+                        {Math.round(weeklySeries.baselineAvailable)}h
+                      </span>
+                    ) : null}
                   </div>
                 </>
               ) : (
@@ -732,17 +995,17 @@ export default function HistoryPage() {
               <div className="flex items-start justify-between">
                 <div>
                   <h2 className="text-sm font-semibold text-text">
-                    Domain breakdown
+                    Domain + Ikigai alignment
                   </h2>
                   <p className="mt-1 text-xs text-mutedText">
-                    Planned share and completion for{' '}
+                    Planned vs. completed for{' '}
                     {selectedSummary?.rangeLabel ?? 'this week'}.
                   </p>
                 </div>
                 <div className="hidden items-center gap-3 text-[11px] text-mutedText sm:flex">
                   <span className="inline-flex items-center gap-1">
                     <span className="h-2 w-2 rounded-full bg-accentSoft" />
-                    Planned share
+                    Planned
                   </span>
                   <span className="inline-flex items-center gap-1">
                     <span className="h-2 w-2 rounded-full bg-slate-400" />
@@ -750,53 +1013,91 @@ export default function HistoryPage() {
                   </span>
                 </div>
               </div>
-              <div className="mt-4 space-y-3">
-                {selectedSummary ? (
-                  Object.entries(selectedSummary.domainTotals).map(
-                    ([domainName, totals]) => {
-                      const ratio =
-                        totals.planned > 0
-                          ? Math.min(1, totals.completed / totals.planned)
-                          : 0;
-                      const plannedShare =
-                        selectedSummary.plannedTotal > 0
-                          ? Math.min(1, totals.planned / selectedSummary.plannedTotal)
-                          : 0;
-                      return (
-                        <div
-                          key={domainName}
-                          className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-3"
-                        >
-                          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-mutedText">
-                            <span className="font-medium text-text">
-                              {domainName}
-                            </span>
-                            <span>
-                              {Math.round(totals.completed)}h completed ·{' '}
-                              {Math.round(totals.planned)}h planned
-                            </span>
-                          </div>
-                          <div className="mt-3 h-3 w-full rounded-full bg-white">
-                            <div
-                              className="h-3 rounded-full bg-accentSoft"
-                              style={{ width: `${Math.round(plannedShare * 100)}%` }}
-                            />
-                            <div
-                              className="mt-[-12px] h-3 rounded-full bg-slate-400"
-                              style={{ width: `${Math.round(ratio * 100)}%` }}
-                            />
-                          </div>
-                          <div className="mt-2 flex items-center justify-between text-[11px] text-mutedText">
-                            <span>{Math.round(plannedShare * 100)}% of plan</span>
-                            <span>{Math.round(ratio * 100)}% completed</span>
-                          </div>
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <div className="space-y-3">
+                  <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
+                    Domains
+                  </p>
+                  {domainAlignment.length === 0 ? (
+                    <p className="text-xs text-mutedText">No history yet.</p>
+                  ) : (
+                    domainAlignment.map((domain) => (
+                      <div
+                        key={domain.name}
+                        className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-3"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-mutedText">
+                          <span className="font-medium text-text">{domain.name}</span>
+                          <span>
+                            {Math.round(domain.completed)}h ·{' '}
+                            {Math.round(domain.planned)}h
+                          </span>
                         </div>
-                      );
-                    },
-                  )
-                ) : (
-                  <p className="text-xs text-mutedText">No history yet.</p>
-                )}
+                      <div className="mt-3 h-3 w-full rounded-full bg-slate-100">
+                        <div
+                          className="h-3 rounded-full bg-accentSoft"
+                          style={{ width: '100%' }}
+                        />
+                        <div
+                          className="mt-[-12px] h-3 rounded-full bg-slate-600"
+                          style={{
+                            width: `${Math.min(
+                              100,
+                              Math.round(domain.completion * 100),
+                            )}%`,
+                            backgroundColor: `rgba(${getDomainColor(domain.name).r}, ${
+                              getDomainColor(domain.name).g
+                            }, ${getDomainColor(domain.name).b}, ${Math.min(
+                              1,
+                              0.35 + domain.completion * 0.65,
+                            )})`,
+                          }}
+                        />
+                      </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+                <div className="space-y-3">
+                  <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
+                    Ikigai values
+                  </p>
+                  {ikigaiAlignment.map((value) => (
+                    <div
+                      key={value.id}
+                      className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-3"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-mutedText">
+                        <span className="font-medium text-text">{value.label}</span>
+                        <span>
+                          {Math.round(value.completed)}h ·{' '}
+                          {Math.round(value.planned)}h
+                        </span>
+                      </div>
+                      <div className="mt-3 h-3 w-full rounded-full bg-slate-100">
+                        <div
+                          className="h-3 rounded-full bg-accentSoft"
+                          style={{ width: '100%' }}
+                        />
+                        <div
+                          className="mt-[-12px] h-3 rounded-full bg-slate-600"
+                          style={{
+                            width: `${Math.min(
+                              100,
+                              Math.round(value.completion * 100),
+                            )}%`,
+                            backgroundColor: `rgba(${IKIGAI_COLORS[value.id].r}, ${
+                              IKIGAI_COLORS[value.id].g
+                            }, ${IKIGAI_COLORS[value.id].b}, ${Math.min(
+                              1,
+                              0.35 + value.completion * 0.65,
+                            )})`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -870,39 +1171,61 @@ export default function HistoryPage() {
                   <button
                     type="button"
                     className="text-xs text-mutedText hover:text-text"
-                    onClick={() => setShowSavedNote((prev) => !prev)}
+                    onClick={() => {
+                      if (showSavedNote && weekNote?.note) {
+                        setNoteDraft(weekNote.note);
+                      }
+                      setShowSavedNote((prev) => !prev);
+                    }}
                   >
                     {showSavedNote ? 'Hide note' : 'View note'}
                   </button>
                 ) : null}
               </div>
               {isCurrentWeek ? (
-                <>
-                  <textarea
-                    className="mt-4 h-40 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-text"
-                    value={noteDraft}
-                    onChange={(event) => setNoteDraft(event.target.value)}
-                    placeholder="Anything to remember about this week?"
-                  />
-                  <button
-                    type="button"
-                    className="mt-4 inline-flex w-full items-center justify-center rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-text disabled:opacity-60"
-                    onClick={handleSaveNote}
-                    disabled={isSavingNote}
-                  >
-                    {isSavingNote ? 'Saving…' : 'Save note'}
-                  </button>
-                </>
-              ) : (
-                <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50 px-3 py-3 text-xs text-mutedText">
-                  Notes live in the current week. Past weeks stay in the archive.
-                </div>
-              )}
-              {showSavedNote && weekNote?.note ? (
+                showSavedNote && weekNote?.note ? (
+                  <div className="mt-4 space-y-3">
+                    <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-3 text-xs text-text">
+                      {weekNote.note}
+                    </div>
+                    <button
+                      type="button"
+                      className="inline-flex items-center justify-center rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-text"
+                      onClick={() => {
+                        setNoteDraft(weekNote.note);
+                        setShowSavedNote(false);
+                      }}
+                    >
+                      Edit note
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <textarea
+                      className="mt-4 h-40 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-text"
+                      value={noteDraft}
+                      onChange={(event) => setNoteDraft(event.target.value)}
+                      placeholder="Anything to remember about this week?"
+                    />
+                    <button
+                      type="button"
+                      className="mt-4 inline-flex w-full items-center justify-center rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-text disabled:opacity-60"
+                      onClick={handleSaveNote}
+                      disabled={isSavingNote}
+                    >
+                      {isSavingNote ? 'Saving…' : 'Save note'}
+                    </button>
+                  </>
+                )
+              ) : weekNote?.note ? (
                 <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50 px-3 py-3 text-xs text-text">
                   {weekNote.note}
                 </div>
-              ) : null}
+              ) : (
+                <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50 px-3 py-3 text-xs text-mutedText">
+                  No note saved for this week yet.
+                </div>
+              )}
             </div>
             <div className="rounded-xl border border-slate-200 bg-white p-4">
               <h2 className="text-sm font-semibold text-text">Key signals</h2>

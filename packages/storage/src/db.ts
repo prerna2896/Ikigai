@@ -66,6 +66,10 @@ const schemaV9 = {
   weekNotes: 'id, weekId, createdAt, updatedAt',
 };
 
+const schemaV10 = {
+  ...schemaV9,
+};
+
 export class IkigaiDB extends Dexie {
   domains!: Table<Domain, string>;
   settings!: Table<Settings, string>;
@@ -89,6 +93,7 @@ export class IkigaiDB extends Dexie {
     this.version(7).stores(schemaV7);
     this.version(8).stores(schemaV8);
     this.version(9).stores(schemaV9);
+    this.version(10).stores(schemaV10);
   }
 }
 

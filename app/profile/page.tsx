@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   computeWeeklyCapacity,
@@ -161,9 +162,20 @@ export default function ProfilePage() {
   return (
     <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-8 px-6 py-12">
       <header className="space-y-3">
-        <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
-          Profile
-        </p>
+        <div className="flex items-center justify-between">
+          <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
+            Profile
+          </p>
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 text-xs text-mutedText hover:text-text"
+          >
+            <span className="text-base" aria-hidden="true">
+              ⌂
+            </span>
+            Home
+          </Link>
+        </div>
         <h1 className="text-3xl font-semibold text-text">Your profile</h1>
         <p className="text-sm text-mutedText">
           Update your name and weekly defaults in one place.
