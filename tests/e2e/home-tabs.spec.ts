@@ -13,9 +13,9 @@ test('home tabs navigate to primary areas', async ({ page }) => {
   const viewHistory = page.getByTestId('home-tab-history');
 
   await expect(getStarted).toHaveText('Get started');
-  await expect(goPlanning).toHaveText('Go to planning');
-  await expect(openProfile).toHaveText('Open profile');
-  await expect(viewHistory).toHaveText('View history');
+  await expect(goPlanning).toHaveText('Plan');
+  await expect(openProfile).toHaveText('Profile');
+  await expect(viewHistory).toHaveText('History');
 
   await getStarted.click();
   await expect(page).toHaveURL(/onboarding\/context/);

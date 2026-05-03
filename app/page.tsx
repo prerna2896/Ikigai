@@ -353,54 +353,6 @@ export default function HomePage() {
           </div>
         ) : null}
       </header>
-      <section
-        className="rounded-2xl border border-slate-200 bg-surface p-6 shadow-sm"
-        data-testid="home-tabs"
-      >
-        <h2 className="text-lg font-medium text-text">Start here</h2>
-        <p className="mt-2 text-sm text-mutedText">
-          A few calm steps to make this space feel like yours.
-        </p>
-        <div className="mt-4 flex flex-wrap gap-3">
-          <Link
-            className="inline-flex items-center rounded-full bg-accent px-4 py-2 text-sm font-medium text-white"
-            href="/onboarding/context"
-            data-testid="home-tab-get-started"
-          >
-            Get started
-          </Link>
-          <Link
-            className="inline-flex items-center rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-text"
-            href="/week/plan"
-            data-testid="home-tab-planning"
-          >
-            Go to planning
-          </Link>
-          <Link
-            className="inline-flex items-center rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-text"
-            href="/profile"
-            data-testid="home-tab-profile"
-          >
-            Open profile
-          </Link>
-          <Link
-            className="inline-flex items-center rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-text"
-            href="/history"
-            data-testid="home-tab-history"
-          >
-            View history
-          </Link>
-          <Link
-            className="inline-flex items-center rounded-full border border-slate-200 bg-accentSoft px-4 py-2 text-sm font-medium text-text"
-            href="/dev/db"
-          >
-            DB Playground (dev)
-          </Link>
-        </div>
-        <p className="mt-3 text-xs text-mutedText">
-          Dev tools are optional and for local testing only.
-        </p>
-      </section>
       {weekPlan ? (
         <section
           className="rounded-2xl border border-slate-200 bg-surface p-6 shadow-sm"

@@ -19,6 +19,18 @@ body {
   color: var(--text);
 }
 
+.bg-bg {
+  background-color: var(--bg);
+}
+
+.bg-bg\/85 {
+  background-color: rgb(246 245 242 / 0.85);
+}
+
+.bg-bg\/70 {
+  background-color: rgb(246 245 242 / 0.7);
+}
+
 .bg-surface {
   background-color: var(--surface);
 }

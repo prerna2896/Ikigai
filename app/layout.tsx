@@ -1,5 +1,6 @@
 import './globals.css';
 import type { ReactNode } from 'react';
+import TopNav from '../components/TopNav';
 
 export const metadata = {
   title: 'Ikigai',
@@ -10,6 +11,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <body className="min-h-screen">
+        <TopNav />
         {children}
       </body>
     </html>
