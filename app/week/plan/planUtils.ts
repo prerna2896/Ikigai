@@ -351,13 +351,14 @@ export const moveTaskToDomain = (
     return plan;
   }
 
+  const taskToMove = movedTask;
   const updatedDomains = domainsWithoutTask.map((domain) => {
     if (domain.id !== toDomainId) {
       return domain;
     }
     return {
       ...domain,
-      tasks: [...domain.tasks, movedTask],
+      tasks: [...domain.tasks, taskToMove],
     };
   });
 

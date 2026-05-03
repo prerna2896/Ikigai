@@ -179,7 +179,7 @@ export default function WeekPlanPage() {
     } catch (error) {
       setStatus(String(error));
     }
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     try {
@@ -545,10 +545,10 @@ export default function WeekPlanPage() {
       base[principle] += domain.plannedHours || 0;
     });
     return [
-      { id: 'energy', label: 'Energy', hours: base.energy },
-      { id: 'growth', label: 'Growth', hours: base.growth },
-      { id: 'contribution', label: 'Contribution', hours: base.contribution },
-      { id: 'alignment', label: 'Alignment', hours: base.alignment },
+      { id: 'energy' as IkigaiPrincipleId, label: 'Energy', hours: base.energy },
+      { id: 'growth' as IkigaiPrincipleId, label: 'Growth', hours: base.growth },
+      { id: 'contribution' as IkigaiPrincipleId, label: 'Contribution', hours: base.contribution },
+      { id: 'alignment' as IkigaiPrincipleId, label: 'Alignment', hours: base.alignment },
     ];
   }, [weekPlan]);
 
