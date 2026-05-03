@@ -8,7 +8,7 @@ const tabs = [
   { label: 'Get started', href: '/onboarding/context', testId: 'home-tab-get-started' },
   { label: 'Plan', href: '/week/plan', testId: 'home-tab-planning' },
   { label: 'Log', href: '/?focus=log', testId: 'home-tab-log' },
-  { label: 'Reflect', href: '/?focus=reflect', testId: 'home-tab-reflect' },
+  { label: 'Reflect', href: '/reflect', testId: 'home-tab-reflect' },
   { label: 'Profile', href: '/profile', testId: 'home-tab-profile' },
   { label: 'History', href: '/history', testId: 'home-tab-history' },
 ] as const;

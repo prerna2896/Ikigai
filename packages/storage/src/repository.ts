@@ -37,5 +37,6 @@ export interface WeekLogRepository {
 
 export interface WeekNoteRepository {
   getWeekNote(weekId: string): Promise<WeekNote | null>;
+  listWeekNotes(weekId: string): Promise<WeekNote[]>;
   saveWeekNote(note: WeekNote): Promise<void>;
 }

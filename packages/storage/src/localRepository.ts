@@ -340,14 +340,21 @@ export class LocalRepository
     return parseOrThrow(weekNoteSchema, note, 'WeekNote');
   }
 
+  async listWeekNotes(weekId: string): Promise<WeekNote[]> {
+    const notes = await this.db.weekNotes
+      .where('weekId')
+      .equals(weekId)
+      .toArray();
+    return parseOrThrow(z.array(weekNoteSchema), notes, 'WeekNote list');
+  }
+
   async saveWeekNote(note: WeekNote): Promise<void> {
     const validated = parseOrThrow(weekNoteSchema, note, 'WeekNote');
     await this.db.weekNotes.put(validated);
   }
 
   async resetAll(): Promise<void> {
-    await this.db.transaction(
-      'rw',
+    const tables = [
       this.db.settings,
       this.db.profiles,
       this.db.domains,
@@ -358,19 +365,10 @@ export class LocalRepository
       this.db.draftTasks,
       this.db.frozenWeeks,
       this.db.weekReviews,
-      async () => {
-        await this.db.settings.clear();
-        await this.db.profiles.clear();
-        await this.db.domains.clear();
-        await this.db.weekPlans.clear();
-        await this.db.weekLogs.clear();
-        await this.db.weekNotes.clear();
-        await this.db.weekDrafts.clear();
-        await this.db.draftTasks.clear();
-        await this.db.frozenWeeks.clear();
-        await this.db.weekReviews.clear();
-      },
-    );
+    ];
+    await this.db.transaction('rw', tables, async () => {
+      await Promise.all(tables.map((table) => table.clear()));
+    });
   }
 
   async resetOnboarding(): Promise<void> {
