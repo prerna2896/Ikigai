@@ -1,20 +1,43 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { getLocalRepository } from '@ikigai/storage';
 
 const tabs = [
   { label: 'Home', href: '/', testId: 'home-tab-home' },
-  { label: 'Get started', href: '/onboarding/context', testId: 'home-tab-get-started' },
   { label: 'Plan', href: '/week/plan', testId: 'home-tab-planning' },
   { label: 'Log', href: '/?focus=log', testId: 'home-tab-log' },
   { label: 'Reflect', href: '/reflect', testId: 'home-tab-reflect' },
   { label: 'History', href: '/history', testId: 'home-tab-history' },
 ] as const;
 
+const getInitials = (name: string | null | undefined) => {
+  const trimmed = (name ?? '').trim();
+  if (!trimmed) return '·';
+  const parts = trimmed.split(/\s+/);
+  const first = parts[0]?.[0] ?? '';
+  const last = parts.length > 1 ? parts[parts.length - 1]?.[0] ?? '' : '';
+  return (first + last).toUpperCase() || '·';
+};
+
 export default function TopNav() {
   const pathname = usePathname();
   const isOnboarding = pathname.startsWith('/onboarding');
+  const [initials, setInitials] = useState('·');
+
+  useEffect(() => {
+    try {
+      const repo = getLocalRepository();
+      repo
+        .getProfile()
+        .then((profile) => setInitials(getInitials(profile?.name)))
+        .catch(() => setInitials('·'));
+    } catch {
+      setInitials('·');
+    }
+  }, [pathname]);
 
   const isActive = (href: string) => {
     const path = href.split('?')[0];
@@ -69,7 +92,7 @@ export default function TopNav() {
           data-testid="home-tab-profile"
           className="flex h-9 w-9 items-center justify-center rounded-full bg-accent text-xs font-semibold tracking-wide text-white shadow-sm transition-opacity hover:opacity-90"
         >
-          PA
+          {initials}
         </Link>
       </div>
     </header>

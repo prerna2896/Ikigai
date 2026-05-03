@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import type { DomainTask, Settings, WeekPlan } from '@ikigai/core';
 import { getOpeningRemark, PROFESSION_COMMITMENT_LABELS } from '@ikigai/core';
 import { getLocalRepository } from '@ikigai/storage';
@@ -575,26 +574,6 @@ export default function WeekPlanPage() {
       data-testid="planning-page"
     >
       <header className="space-y-3" data-testid="planning-banner">
-        <div className="flex items-center justify-between">
-          <button
-            type="button"
-            className="inline-flex items-center gap-2 text-xs text-mutedText hover:text-text"
-            onClick={() => router.push('/onboarding/settings?step=3')}
-            data-testid="planning-back"
-          >
-            ← Back to settings
-          </button>
-          <Link
-            href="/"
-            className="inline-flex items-center gap-2 text-xs text-mutedText hover:text-text"
-            data-testid="planning-home"
-          >
-            <span className="text-base" aria-hidden="true">
-              ⌂
-            </span>
-            Home
-          </Link>
-        </div>
         <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
           {PLAN_COPY.headerLabel}
         </p>

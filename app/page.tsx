@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import type { Settings, WeekLogEntry, WeekPlan } from '@ikigai/core';
+import type { Profile, Settings, WeekLogEntry, WeekPlan } from '@ikigai/core';
 import { getLocalRepository } from '@ikigai/storage';
 import IkigaiWheelPlot from '../components/IkigaiWheelPlot';
 import IkigaiPrinciplesPlot, {
@@ -62,6 +62,7 @@ const getDomainIcon = (domainName: string) => {
 
 export default function HomePage() {
   const [settings, setSettings] = useState<Settings | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [weekPlan, setWeekPlan] = useState<WeekPlan | null>(null);
   const [weekLogs, setWeekLogs] = useState<WeekLogEntry[]>([]);
   const [status, setStatus] = useState<string | null>(null);
@@ -81,9 +82,10 @@ export default function HomePage() {
   useEffect(() => {
     try {
       const repo = getLocalRepository();
-      Promise.all([repo.getSettings(), repo.listWeekPlans()])
-        .then(async ([settingsRecord, plans]) => {
+      Promise.all([repo.getSettings(), repo.listWeekPlans(), repo.getProfile()])
+        .then(async ([settingsRecord, plans, profileRecord]) => {
           setSettings(settingsRecord);
+          setProfile(profileRecord ?? null);
           if (plans.length === 0) {
             setWeekPlan(null);
             setWeekLogs([]);
@@ -681,15 +683,20 @@ export default function HomePage() {
         <section className="rounded-2xl border border-slate-200 bg-surface p-6 shadow-sm">
           <h2 className="text-lg font-medium text-text">No plan yet</h2>
           <p className="mt-2 text-sm text-mutedText">
-            Start onboarding to set up a week, or jump into planning.
+            {profile
+              ? 'Jump into planning to set up your week.'
+              : 'Start onboarding to set up a week, or jump into planning.'}
           </p>
           <div className="mt-4 flex flex-wrap gap-3">
-            <Link
-              className="inline-flex items-center rounded-full bg-accent px-4 py-2 text-sm font-medium text-white"
-              href="/onboarding/context"
-            >
-              Get started
-            </Link>
+            {profile ? null : (
+              <Link
+                className="inline-flex items-center rounded-full bg-accent px-4 py-2 text-sm font-medium text-white"
+                href="/onboarding/context"
+                data-testid="home-cta-get-started"
+              >
+                Get started
+              </Link>
+            )}
             <Link
               className="inline-flex items-center rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-text"
               href="/week/plan"
