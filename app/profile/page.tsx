@@ -170,13 +170,14 @@ export default function ProfilePage() {
             Profile
           </p>
           <Link
-            href="/"
+            href="/settings"
+            data-testid="profile-link-settings"
             className="inline-flex items-center gap-2 text-xs text-mutedText hover:text-text"
           >
             <span className="text-base" aria-hidden="true">
-              ⌂
+              ⚙
             </span>
-            Home
+            Settings
           </Link>
         </div>
         <h1 className="text-3xl font-semibold text-text">Your profile</h1>

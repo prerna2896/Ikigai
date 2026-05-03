@@ -72,19 +72,9 @@ export default function OnboardingReflectionPage() {
       data-testid="onboarding-reflection"
     >
       <header className="space-y-3">
-        <div className="flex items-center justify-between">
-          <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
-            Reflection
-          </p>
-          <button
-            type="button"
-            className="text-xs text-mutedText hover:text-text"
-            onClick={() => router.replace('/')}
-            data-testid="onboarding-home"
-          >
-            Home
-          </button>
-        </div>
+        <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
+          Reflection
+        </p>
         <h1 className="text-3xl font-semibold text-text">
           A few gentle questions
         </h1>

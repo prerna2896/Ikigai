@@ -181,19 +181,9 @@ function OnboardingSettingsContent() {
       data-testid="onboarding-settings"
     >
       <header className="space-y-3">
-        <div className="flex items-center justify-between">
-          <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
-            Settings
-          </p>
-          <button
-            type="button"
-            className="text-xs text-mutedText hover:text-text"
-            onClick={() => router.replace('/')}
-            data-testid="onboarding-home"
-          >
-            Home
-          </button>
-        </div>
+        <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
+          Settings
+        </p>
         <h1 className="text-3xl font-semibold text-text">{activeStep.title}</h1>
         {activeStep.helper ? (
           <p className="text-sm text-mutedText">{activeStep.helper}</p>

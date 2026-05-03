@@ -125,19 +125,9 @@ export default function OnboardingGoalsPage() {
       <OnboardingProgress step={4} total={5} />
 
       <header className="space-y-3">
-        <div className="flex items-center justify-between">
-          <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
-            Life Areas & Goals
-          </p>
-          <button
-            type="button"
-            className="text-xs text-mutedText hover:text-text"
-            onClick={() => router.replace('/')}
-            data-testid="onboarding-home"
-          >
-            Home
-          </button>
-        </div>
+        <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
+          Life Areas & Goals
+        </p>
         <h1 className="text-3xl font-semibold text-text">
           What areas matter most to you?
         </h1>

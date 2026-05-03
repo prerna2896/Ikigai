@@ -14,7 +14,7 @@ test('home tabs navigate to primary areas', async ({ page }) => {
 
   await expect(getStarted).toHaveText('Get started');
   await expect(goPlanning).toHaveText('Plan');
-  await expect(openProfile).toHaveText('Profile');
+  await expect(openProfile).toHaveAccessibleName('Profile');
   await expect(viewHistory).toHaveText('History');
 
   await getStarted.click();

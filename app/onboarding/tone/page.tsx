@@ -64,19 +64,9 @@ export default function OnboardingTonePage() {
     >
       <section className="rounded-2xl border border-slate-200 bg-surface p-8 shadow-sm">
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
-              Tone
-            </p>
-            <button
-              type="button"
-              className="text-xs text-mutedText hover:text-text"
-              onClick={() => router.replace('/')}
-              data-testid="onboarding-home"
-            >
-              Home
-            </button>
-          </div>
+          <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
+            Tone
+          </p>
           <h1 className="text-3xl font-semibold text-text">
             How would you like this to feel?
           </h1>

@@ -9,16 +9,12 @@ const tabs = [
   { label: 'Plan', href: '/week/plan', testId: 'home-tab-planning' },
   { label: 'Log', href: '/?focus=log', testId: 'home-tab-log' },
   { label: 'Reflect', href: '/reflect', testId: 'home-tab-reflect' },
-  { label: 'Profile', href: '/profile', testId: 'home-tab-profile' },
   { label: 'History', href: '/history', testId: 'home-tab-history' },
 ] as const;
 
 export default function TopNav() {
   const pathname = usePathname();
-
-  if (pathname.startsWith('/onboarding')) {
-    return null;
-  }
+  const isOnboarding = pathname.startsWith('/onboarding');
 
   const isActive = (href: string) => {
     const path = href.split('?')[0];
@@ -31,6 +27,7 @@ export default function TopNav() {
       <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-8 sm:py-4">
         <Link
           href="/"
+          data-testid="top-nav-home"
           className="flex items-center gap-2 text-sm font-medium tracking-tight text-text"
           aria-label="Ikigai home"
         >
@@ -40,35 +37,39 @@ export default function TopNav() {
           />
           <span className="text-base">ikigai</span>
         </Link>
-        <nav
-          aria-label="Primary"
-          data-testid="home-tabs"
-          className="hidden items-center gap-1 rounded-full md:flex"
-        >
-          {tabs.map((tab) => {
-            const active = isActive(tab.href);
-            return (
-              <Link
-                key={tab.label}
-                href={tab.href}
-                aria-current={active ? 'page' : undefined}
-                data-testid={tab.testId}
-                className={`rounded-full px-3 py-2 text-sm transition-colors ${
-                  active
-                    ? 'bg-accent text-white shadow-sm'
-                    : 'text-mutedText hover:bg-slate-100 hover:text-text'
-                }`}
-              >
-                {tab.label}
-              </Link>
-            );
-          })}
-        </nav>
+        {isOnboarding ? null : (
+          <nav
+            aria-label="Primary"
+            data-testid="home-tabs"
+            className="hidden items-center gap-1 rounded-full md:flex"
+          >
+            {tabs.map((tab) => {
+              const active = isActive(tab.href);
+              return (
+                <Link
+                  key={tab.label}
+                  href={tab.href}
+                  aria-current={active ? 'page' : undefined}
+                  data-testid={tab.testId}
+                  className={`rounded-full px-3 py-2 text-sm transition-colors ${
+                    active
+                      ? 'bg-accent text-white shadow-sm'
+                      : 'text-mutedText hover:bg-slate-100 hover:text-text'
+                  }`}
+                >
+                  {tab.label}
+                </Link>
+              );
+            })}
+          </nav>
+        )}
         <Link
-          href="/settings"
-          className="text-sm text-mutedText transition-colors hover:text-text"
+          href="/profile"
+          aria-label="Profile"
+          data-testid="home-tab-profile"
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-accent text-xs font-semibold tracking-wide text-white shadow-sm transition-opacity hover:opacity-90"
         >
-          Setup
+          PA
         </Link>
       </div>
     </header>
