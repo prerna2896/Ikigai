@@ -51,4 +51,4 @@ pnpm install
 pnpm dev
 ```
 
-Open `http://localhost:3000/dev/db` to use the DB Playground and verify persistence.
+Open `http://localhost:3000` to start using the app.
