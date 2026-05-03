@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getBufferPercentForStrictness, type Settings } from '@ikigai/core';
 import { getLocalRepository } from '@ikigai/storage';
@@ -31,7 +31,7 @@ const professionOptions: Array<{
   { label: 'Other', value: 'other' },
 ];
 
-export default function OnboardingSettingsPage() {
+function OnboardingSettingsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [repository, setRepository] = useState<ReturnType<
@@ -365,7 +365,6 @@ export default function OnboardingSettingsPage() {
           </div>
         ) : null}
 
-        {activeStep.id === 'strictness' ? null : null}
 
         {activeStep.id === 'commitments' ? (
           <div className="flex flex-col gap-4">
@@ -563,5 +562,13 @@ export default function OnboardingSettingsPage() {
         )}
       </footer>
     </main>
+  );
+}
+
+export default function OnboardingSettingsPage() {
+  return (
+    <Suspense>
+      <OnboardingSettingsContent />
+    </Suspense>
   );
 }

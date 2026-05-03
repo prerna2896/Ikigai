@@ -43,14 +43,24 @@ export type Settings = {
     | 'somewhat_flexible'
     | 'structured'
     | 'very_structured';
+  checkInFrequency?: 'daily' | 'few_days' | 'weekly';
+  planningFrequency?: 'daily' | 'weekly' | 'monthly';
   createdAt: string;
   updatedAt: string;
+};
+
+export type ProfileGoal = {
+  text: string;
+  timeline: string;
+  createdAt: string;
 };
 
 export type Profile = {
   id: string; // uuid
   name: string;
   reflections: ProfileReflection[];
+  lifeAreas?: string[];
+  goals?: ProfileGoal[];
   createdAt: string;
   updatedAt: string;
 };
