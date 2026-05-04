@@ -162,6 +162,17 @@ export const profileSchema = z.object({
       answer: z.string(),
     }),
   ),
+  lifeAreas: z.array(z.string()).optional(),
+  goals: z
+    .array(
+      z.object({
+        text: z.string(),
+        timeline: z.string(),
+        createdAt: isoDateString,
+      }),
+    )
+    .optional(),
+  lastActivityAt: isoDateString.nullable().optional(),
   createdAt: isoDateString,
   updatedAt: isoDateString,
 });

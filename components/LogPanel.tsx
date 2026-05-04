@@ -1,0 +1,427 @@
+'use client';
+
+import { useEffect, useMemo, useState } from 'react';
+import type { WeekLogEntry, WeekPlan } from '@ikigai/core';
+import { getLocalRepository } from '@ikigai/storage';
+import { addDomainToPlan, withDerivedPlannedHours } from '../app/week/plan/planUtils';
+
+type LogFormState = Record<string, string>;
+
+const formatHoursInput = (value: string) =>
+  value.replace(/[^\d]/g, '').replace(/^0+(?=\d)/, '');
+
+const parseHours = (value: string) => {
+  const cleaned = formatHoursInput(value);
+  if (cleaned === '') return 0;
+  const parsed = Number(cleaned);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const getDomainIcon = (domainName: string) => {
+  const key = domainName.toLowerCase();
+  if (key.includes('work') || key.includes('study')) return '💼';
+  if (key.includes('health')) return '🫁';
+  if (key.includes('home') || key.includes('life')) return '🏠';
+  if (key.includes('relationship')) return '🤝';
+  if (key.includes('growth')) return '🌱';
+  if (key.includes('rest') || key.includes('recharge')) return '🫧';
+  return '•';
+};
+
+type LogPanelProps = {
+  weekPlan: WeekPlan;
+  onPlanChange?: (next: WeekPlan) => void;
+  onLogSaved?: () => void;
+  variant?: 'standalone' | 'embedded';
+};
+
+export default function LogPanel({
+  weekPlan,
+  onPlanChange,
+  onLogSaved,
+  variant = 'standalone',
+}: LogPanelProps) {
+  const [plan, setPlan] = useState<WeekPlan>(weekPlan);
+  const [weekLogs, setWeekLogs] = useState<WeekLogEntry[]>([]);
+  const [logForm, setLogForm] = useState<LogFormState>({});
+  const [isSaving, setIsSaving] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [unplannedTitle, setUnplannedTitle] = useState('');
+  const [unplannedHours, setUnplannedHours] = useState('1');
+  const [unplannedDomainId, setUnplannedDomainId] = useState<string | null>(
+    weekPlan.domains[0]?.id ?? null,
+  );
+  const [unplannedTasks, setUnplannedTasks] = useState<
+    { title: string; hours: number; domainId: string }[]
+  >([]);
+  const [newDomainName, setNewDomainName] = useState('');
+
+  useEffect(() => {
+    setPlan(weekPlan);
+    setUnplannedDomainId((prev) => prev ?? weekPlan.domains[0]?.id ?? null);
+  }, [weekPlan]);
+
+  useEffect(() => {
+    let cancelled = false;
+    try {
+      const repo = getLocalRepository();
+      repo
+        .getWeekLogs(plan.id)
+        .then((logs) => {
+          if (cancelled) return;
+          const ordered = [...logs].sort((a, b) =>
+            a.dateISO < b.dateISO ? 1 : -1,
+          );
+          setWeekLogs(ordered);
+        })
+        .catch((err) => {
+          if (!cancelled) setError(String(err));
+        });
+    } catch (err) {
+      setError(String(err));
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [plan.id]);
+
+  const tasksForLog = useMemo(
+    () =>
+      plan.domains
+        .flatMap((domain) =>
+          domain.tasks.map((task) => ({
+            id: task.id,
+            title: task.title,
+            plannedHours: task.plannedHours,
+            domainName: domain.name,
+          })),
+        )
+        .sort((a, b) => b.plannedHours - a.plannedHours),
+    [plan],
+  );
+
+  const weekTotals = useMemo(() => {
+    const totals: Record<string, number> = {};
+    weekLogs.forEach((log) => {
+      Object.entries(log.taskHours).forEach(([taskId, hours]) => {
+        totals[taskId] = (totals[taskId] || 0) + hours;
+      });
+    });
+    return totals;
+  }, [weekLogs]);
+
+  const lastLog = weekLogs[0] ?? null;
+  const lastLogDate = lastLog
+    ? new Date(lastLog.dateISO).toLocaleDateString('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+      })
+    : null;
+  const lastLogTotal = lastLog
+    ? Object.values(lastLog.taskHours).reduce((sum, h) => sum + h, 0)
+    : 0;
+
+  const handleLogChange = (taskId: string, value: string) => {
+    setLogForm((prev) => ({ ...prev, [taskId]: formatHoursInput(value) }));
+  };
+
+  const handleAddUnplannedTask = () => {
+    const title = unplannedTitle.trim();
+    const hours = parseHours(unplannedHours);
+    if (!title || hours <= 0 || !unplannedDomainId) return;
+    setUnplannedTasks((prev) => [
+      ...prev,
+      { title, hours, domainId: unplannedDomainId },
+    ]);
+    setUnplannedTitle('');
+    setUnplannedHours('1');
+  };
+
+  const handleAddUnplannedDomain = async () => {
+    const trimmed = newDomainName.trim();
+    if (!trimmed || plan.domains.length >= 7) return;
+    try {
+      const repo = getLocalRepository();
+      const { plan: nextPlan, domain } = addDomainToPlan(plan, trimmed);
+      const normalized = withDerivedPlannedHours(nextPlan);
+      await repo.saveWeekPlan(normalized);
+      setPlan(normalized);
+      onPlanChange?.(normalized);
+      setUnplannedDomainId(domain.id);
+      setNewDomainName('');
+    } catch (err) {
+      setError(String(err));
+    }
+  };
+
+  const handleSaveLog = async () => {
+    try {
+      const repo = getLocalRepository();
+      setIsSaving(true);
+      setError(null);
+      const nowIso = new Date().toISOString();
+      const taskHours: Record<string, number> = {};
+      tasksForLog.forEach((task) => {
+        const raw = logForm[task.id] ?? '';
+        if (raw !== '') {
+          taskHours[task.id] = parseHours(raw);
+        }
+      });
+      let workingPlan = plan;
+      if (unplannedTasks.length > 0) {
+        const newTasks = unplannedTasks.map((task) => ({
+          id: crypto.randomUUID(),
+          title: task.title,
+          plannedHours: 0,
+          domainId: task.domainId,
+          hours: task.hours,
+        }));
+        workingPlan = {
+          ...plan,
+          domains: plan.domains.map((domain) => {
+            const additions = newTasks
+              .filter((task) => task.domainId === domain.id)
+              .map((task) => ({
+                id: task.id,
+                title: task.title,
+                plannedHours: 0,
+              }));
+            if (additions.length === 0) return domain;
+            return { ...domain, tasks: [...domain.tasks, ...additions] };
+          }),
+          createdAtISO: plan.createdAtISO ?? nowIso,
+        };
+        newTasks.forEach((task) => {
+          taskHours[task.id] = task.hours;
+        });
+        const normalized = withDerivedPlannedHours(workingPlan);
+        await repo.saveWeekPlan(normalized);
+        setPlan(normalized);
+        onPlanChange?.(normalized);
+        workingPlan = normalized;
+      }
+      if (Object.keys(taskHours).length === 0) {
+        setError('Add at least one number before saving.');
+        return;
+      }
+      const entry: WeekLogEntry = {
+        id: crypto.randomUUID(),
+        weekId: workingPlan.id,
+        dateISO: nowIso,
+        taskHours,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      };
+      await repo.saveWeekLog(entry);
+      const refreshed = await repo.getWeekLogs(workingPlan.id);
+      const ordered = [...refreshed].sort((a, b) =>
+        a.dateISO < b.dateISO ? 1 : -1,
+      );
+      setWeekLogs(ordered);
+      setLogForm({});
+      setUnplannedTasks([]);
+      setUnplannedTitle('');
+      setUnplannedHours('1');
+      setStatus('Logged.');
+      onLogSaved?.();
+      window.setTimeout(() => setStatus(null), 1500);
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const containerClass =
+    variant === 'embedded'
+      ? 'space-y-4'
+      : 'rounded-2xl border border-slate-200 bg-surface p-6 shadow-sm space-y-4';
+
+  return (
+    <section className={containerClass} data-testid="log-panel">
+      <div className="flex items-baseline justify-between gap-3">
+        <div className="space-y-1">
+          {lastLogDate ? (
+            <p className="text-xs text-mutedText">
+              Last entry: {lastLogDate} · {Math.round(lastLogTotal)}h logged
+            </p>
+          ) : (
+            <p className="text-xs text-mutedText">No entries yet this week.</p>
+          )}
+        </div>
+        {status ? (
+          <span className="text-xs text-mutedText" aria-live="polite">
+            {status}
+          </span>
+        ) : null}
+      </div>
+
+      {error ? (
+        <div
+          role="alert"
+          className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700"
+        >
+          {error}
+        </div>
+      ) : null}
+
+      {tasksForLog.length === 0 ? (
+        <p className="text-sm text-mutedText">
+          This plan has no tasks yet. Open the plan to add some.
+        </p>
+      ) : (
+        <div className="space-y-3">
+          {tasksForLog.map((task) => (
+            <div
+              key={task.id}
+              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-2 text-sm text-text"
+            >
+              <div className="flex min-w-[160px] flex-1 items-center gap-3">
+                <span
+                  className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-base"
+                  title={task.domainName}
+                  aria-label={task.domainName}
+                >
+                  {getDomainIcon(task.domainName)}
+                </span>
+                <span className="font-medium">{task.title}</span>
+              </div>
+              <div className="flex items-center gap-4 text-xs text-mutedText">
+                <div className="flex items-center gap-2">
+                  <span>Planned</span>
+                  <span className="font-medium text-text">
+                    {Math.round(task.plannedHours)}h
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span>Completed</span>
+                  <span className="font-medium text-text">
+                    {Math.round(weekTotals[task.id] || 0)}h
+                  </span>
+                </div>
+              </div>
+              <label className="sr-only" htmlFor={`log-${task.id}`}>
+                Hours for {task.title}
+              </label>
+              <input
+                id={`log-${task.id}`}
+                type="text"
+                inputMode="numeric"
+                className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-sm text-text"
+                value={logForm[task.id] ?? ''}
+                onChange={(event) =>
+                  handleLogChange(task.id, event.target.value)
+                }
+                placeholder="0"
+              />
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-mutedText">
+        <p className="text-sm font-medium text-text">Log something unplanned</p>
+        <p className="mt-1">Add completed tasks that weren’t on the plan.</p>
+        {unplannedTasks.length > 0 ? (
+          <div className="mt-3 space-y-2">
+            {unplannedTasks.map((task, index) => {
+              const domainName =
+                plan.domains.find((domain) => domain.id === task.domainId)
+                  ?.name ?? 'Domain';
+              return (
+                <div
+                  key={`${task.title}-${index}`}
+                  className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2"
+                >
+                  <span className="text-text">{task.title}</span>
+                  <span>
+                    {task.hours}h · {domainName}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <input
+            type="text"
+            className="min-w-[180px] flex-1 rounded-lg border border-slate-200 px-2 py-1 text-sm text-text"
+            value={unplannedTitle}
+            onChange={(event) => setUnplannedTitle(event.target.value)}
+            placeholder="Task name"
+          />
+          <input
+            type="text"
+            inputMode="numeric"
+            className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-sm text-text"
+            value={unplannedHours}
+            onChange={(event) =>
+              setUnplannedHours(formatHoursInput(event.target.value))
+            }
+            placeholder="Hours"
+          />
+          <select
+            className="min-w-[160px] rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm text-text"
+            value={unplannedDomainId ?? ''}
+            onChange={(event) => setUnplannedDomainId(event.target.value)}
+          >
+            {plan.domains.map((domain) => (
+              <option key={domain.id} value={domain.id}>
+                {domain.name}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium text-text"
+            onClick={handleAddUnplannedTask}
+          >
+            Add unplanned
+          </button>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <input
+            type="text"
+            className="min-w-[180px] flex-1 rounded-lg border border-slate-200 px-2 py-1 text-sm text-text"
+            value={newDomainName}
+            onChange={(event) => setNewDomainName(event.target.value)}
+            placeholder="New domain name"
+          />
+          <button
+            type="button"
+            className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium text-text disabled:opacity-60"
+            onClick={() => void handleAddUnplannedDomain()}
+            disabled={plan.domains.length >= 7}
+          >
+            Add domain
+          </button>
+          {plan.domains.length >= 7 ? (
+            <span className="text-[11px]">Max 7 domains</span>
+          ) : null}
+        </div>
+        <p className="mt-2 text-[11px]">Save log records everything at once.</p>
+      </div>
+
+      <button
+        type="button"
+        className="inline-flex items-center justify-center rounded-xl bg-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+        onClick={handleSaveLog}
+        disabled={isSaving || tasksForLog.length === 0}
+      >
+        {isSaving ? 'Saving…' : 'Save log'}
+      </button>
+
+      {Object.keys(weekTotals).length > 0 ? (
+        <p className="text-xs text-mutedText">
+          Week total so far:{' '}
+          {Math.round(
+            Object.values(weekTotals).reduce((sum, h) => sum + h, 0),
+          )}
+          h
+        </p>
+      ) : null}
+    </section>
+  );
+}

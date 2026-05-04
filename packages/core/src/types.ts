@@ -61,6 +61,7 @@ export type Profile = {
   reflections: ProfileReflection[];
   lifeAreas?: string[];
   goals?: ProfileGoal[];
+  lastActivityAt?: string | null;
   createdAt: string;
   updatedAt: string;
 };

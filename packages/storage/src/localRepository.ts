@@ -330,6 +330,19 @@ export class LocalRepository
   async saveWeekLog(entry: WeekLogEntry): Promise<void> {
     const validated = parseOrThrow(weekLogSchema, entry, 'WeekLog');
     await this.db.weekLogs.put(validated);
+    await this.bumpProfileActivity(validated.updatedAt ?? validated.dateISO);
+  }
+
+  private async bumpProfileActivity(timestamp: string): Promise<void> {
+    const existing = await this.db.profiles.toCollection().first();
+    if (!existing) return;
+    const next = {
+      ...existing,
+      lastActivityAt: timestamp,
+      updatedAt: new Date().toISOString(),
+    };
+    const validated = parseOrThrow(profileSchema, next, 'Profile');
+    await this.db.profiles.put(validated);
   }
 
   async getWeekNote(weekId: string): Promise<WeekNote | null> {
@@ -351,6 +364,7 @@ export class LocalRepository
   async saveWeekNote(note: WeekNote): Promise<void> {
     const validated = parseOrThrow(weekNoteSchema, note, 'WeekNote');
     await this.db.weekNotes.put(validated);
+    await this.bumpProfileActivity(validated.updatedAt);
   }
 
   async resetAll(): Promise<void> {
