@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 import type { Settings, WeekLogEntry, WeekNote, WeekPlan } from '@ikigai/core';
 import { getPrincipleForDomain, type IkigaiPrincipleId } from '../../components/IkigaiPrinciplesPlot';
 import { getLocalRepository } from '@ikigai/storage';
@@ -603,20 +602,9 @@ export default function HistoryPage() {
       data-testid="history-page"
     >
       <header className="space-y-3">
-        <div className="flex items-center justify-between">
-          <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
-            History
-          </p>
-          <Link
-            href="/"
-            className="inline-flex items-center gap-2 text-xs text-mutedText hover:text-text"
-          >
-            <span className="text-base" aria-hidden="true">
-              ⌂
-            </span>
-            Home
-          </Link>
-        </div>
+        <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
+          History
+        </p>
         <h1 className="text-3xl font-semibold text-text">
           Weekly follow-through and patterns
         </h1>

@@ -44,19 +44,9 @@ export default function OnboardingContextPage() {
     >
       <section className="rounded-2xl border border-slate-200 bg-surface p-8 shadow-sm">
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
-              A quick pause
-            </p>
-            <button
-              type="button"
-              className="text-xs text-mutedText hover:text-text"
-              onClick={() => router.replace('/')}
-              data-testid="onboarding-home"
-            >
-              Home
-            </button>
-          </div>
+          <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
+            A quick pause
+          </p>
           <h1 className="text-3xl font-semibold text-text">
             {profileName
               ? `${profileName}, a calm place to plan and recalibrate.`

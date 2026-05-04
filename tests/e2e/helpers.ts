@@ -11,7 +11,7 @@ export const resetAppState = async (page: Page) => {
 
 export const completeOnboarding = async (page: Page) => {
   await page.goto('/');
-  await page.getByTestId('home-tab-get-started').click();
+  await page.getByTestId('home-cta-get-started').click();
   await expect(page).toHaveURL(/onboarding\/context/);
 
   const nameInput = page.getByTestId('onboarding-name-input');

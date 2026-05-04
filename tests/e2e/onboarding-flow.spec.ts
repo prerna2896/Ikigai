@@ -3,10 +3,10 @@ import { test } from './fixtures';
 
 test('onboarding flow follows required navigation rules', async ({ page }) => {
   await page.goto('/');
-  await page.getByTestId('home-tab-get-started').click();
+  await page.getByTestId('home-cta-get-started').click();
 
   await expect(page).toHaveURL(/onboarding\/context/);
-  await expect(page.getByTestId('onboarding-home')).toBeVisible();
+  await expect(page.getByTestId('top-nav-home')).toBeVisible();
   await expect(page.getByTestId('onboarding-next')).toBeVisible();
   await expect(page.getByTestId('onboarding-back')).toHaveCount(0);
 
@@ -17,19 +17,19 @@ test('onboarding flow follows required navigation rules', async ({ page }) => {
   await page.getByTestId('onboarding-next').click();
 
   await expect(page).toHaveURL(/onboarding\/tone/);
-  await expect(page.getByTestId('onboarding-home')).toBeVisible();
+  await expect(page.getByTestId('top-nav-home')).toBeVisible();
   await expect(page.getByTestId('onboarding-back')).toBeVisible();
   await expect(page.getByTestId('onboarding-next')).toBeVisible();
   await page.getByTestId('onboarding-next').click();
 
   await expect(page).toHaveURL(/onboarding\/reflection/);
-  await expect(page.getByTestId('onboarding-home')).toBeVisible();
+  await expect(page.getByTestId('top-nav-home')).toBeVisible();
   await expect(page.getByTestId('onboarding-back')).toBeVisible();
   await expect(page.getByTestId('onboarding-next')).toBeVisible();
   await page.getByTestId('onboarding-next').click();
 
   await expect(page).toHaveURL(/onboarding\/settings/);
-  await expect(page.getByTestId('onboarding-home')).toBeVisible();
+  await expect(page.getByTestId('top-nav-home')).toBeVisible();
   await expect(page.getByTestId('onboarding-back')).toBeVisible();
   await expect(page.getByTestId('onboarding-settings-step')).toBeVisible();
 
