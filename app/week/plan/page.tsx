@@ -12,7 +12,13 @@ import {
 import { getLocalRepository } from '@ikigai/storage';
 import CapacityCard from '../../../components/CapacityCard';
 import WeekGoals from '../../../components/WeekGoals';
+// Old domain-wheel plot. Kept around but hidden — Crystal is the new
+// default. Toggle USE_CRYSTAL_PLOT to false to bring it back.
 import IkigaiWheelPlot from '../../../components/IkigaiWheelPlot';
+import { CrystalIkigai } from '../../../components/CrystalIkigai';
+import { useTheme } from '../../../components/ThemeProvider';
+
+const USE_CRYSTAL_PLOT = true;
 import IkigaiPrinciplesPlot, {
   getPrincipleForDomain,
   type IkigaiPrincipleId,
@@ -63,6 +69,7 @@ const normalizeTitle = (value: string) => value.trim().toLowerCase();
 
 export default function WeekPlanPage() {
   const router = useRouter();
+  const { theme } = useTheme();
   const [repository, setRepository] = useState<ReturnType<
     typeof getLocalRepository
   > | null>(null);
@@ -1041,16 +1048,35 @@ export default function WeekPlanPage() {
               {weekPlan ? (
                 <div data-testid="week-plot">
                   {plotMode === 'domains' ? (
-                    <IkigaiWheelPlot
-                      domains={weekPlan.domains}
-                      activeDomainId={selectedDomainId}
-                      showSkeleton={!hasTasks}
-                      onSelectDomain={(domainId) => {
-                        setSelectedPrincipleId(null);
-                        setSelectedDomainId(domainId);
-                        setSidebarOpen(true);
-                      }}
-                    />
+                    USE_CRYSTAL_PLOT ? (
+                      <CrystalIkigai
+                        variant={theme}
+                        domains={weekPlan.domains.map((domain) => ({
+                          id: domain.id,
+                          name: domain.name,
+                          target: domain.plannedHours || 0,
+                          completed: 0,
+                        }))}
+                        activeDomainId={selectedDomainId}
+                        showSkeleton={!hasTasks}
+                        onSelectDomain={(domainId) => {
+                          setSelectedPrincipleId(null);
+                          setSelectedDomainId(domainId);
+                          setSidebarOpen(true);
+                        }}
+                      />
+                    ) : (
+                      <IkigaiWheelPlot
+                        domains={weekPlan.domains}
+                        activeDomainId={selectedDomainId}
+                        showSkeleton={!hasTasks}
+                        onSelectDomain={(domainId) => {
+                          setSelectedPrincipleId(null);
+                          setSelectedDomainId(domainId);
+                          setSidebarOpen(true);
+                        }}
+                      />
+                    )
                   ) : (
                     <IkigaiPrinciplesPlot
                       domains={weekPlan.domains}
@@ -1231,16 +1257,35 @@ export default function WeekPlanPage() {
                 {weekPlan ? (
                   <div data-testid="week-plot">
                     {plotMode === 'domains' ? (
-                      <IkigaiWheelPlot
-                        domains={weekPlan.domains}
-                        activeDomainId={selectedDomainId}
-                        showSkeleton={!hasTasks}
-                        onSelectDomain={(domainId) => {
-                          setSelectedPrincipleId(null);
-                          setSelectedDomainId(domainId);
-                          setSidebarOpen(true);
-                        }}
-                      />
+                      USE_CRYSTAL_PLOT ? (
+                        <CrystalIkigai
+                          variant={theme}
+                          domains={weekPlan.domains.map((domain) => ({
+                            id: domain.id,
+                            name: domain.name,
+                            target: domain.plannedHours || 0,
+                            completed: 0,
+                          }))}
+                          activeDomainId={selectedDomainId}
+                          showSkeleton={!hasTasks}
+                          onSelectDomain={(domainId) => {
+                            setSelectedPrincipleId(null);
+                            setSelectedDomainId(domainId);
+                            setSidebarOpen(true);
+                          }}
+                        />
+                      ) : (
+                        <IkigaiWheelPlot
+                          domains={weekPlan.domains}
+                          activeDomainId={selectedDomainId}
+                          showSkeleton={!hasTasks}
+                          onSelectDomain={(domainId) => {
+                            setSelectedPrincipleId(null);
+                            setSelectedDomainId(domainId);
+                            setSidebarOpen(true);
+                          }}
+                        />
+                      )
                     ) : (
                       <IkigaiPrinciplesPlot
                         domains={weekPlan.domains}
