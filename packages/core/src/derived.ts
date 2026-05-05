@@ -1,10 +1,11 @@
 import type { Settings } from './types';
 
 export const STRICTNESS_BUFFER_MAP: Record<Settings['strictness'], number> = {
-  very_flexible: 40,
-  somewhat_flexible: 30,
-  structured: 20,
+  very_flexible: 30,
+  somewhat_flexible: 20,
+  structured: 15,
   very_structured: 10,
+  no_buffer: 0,
 };
 
 export const getBufferPercentForStrictness = (
@@ -31,20 +32,22 @@ export const computeWeeklyCapacity = (input: WeeklyCapacityInput) => {
   const classHoursPerWeek =
     typeof input.classHoursPerWeek === 'number' ? input.classHoursPerWeek : 0;
   const bufferPercent =
-    typeof input.bufferPercent === 'number' ? input.bufferPercent : 30;
+    typeof input.bufferPercent === 'number' ? input.bufferPercent : 20;
 
+  // Math: hours_to_plan = total * (1 - buffer%). Sleep / maintenance / job /
+  // classes are kept around as a reference breakdown of where the plannable
+  // hours typically go — they are no longer subtracted from the plannable
+  // total.
   const totalWeekHours = 168;
   const sleepHoursWeek = Math.round(sleepHoursPerDay * 7);
   const maintenanceHoursWeek = Math.round(maintenanceHoursPerDay * 7);
   const commitmentsHoursWeek = Math.round(jobHoursPerWeek + classHoursPerWeek);
-  const remainingBeforeBuffer = Math.max(
-    0,
-    totalWeekHours - sleepHoursWeek - maintenanceHoursWeek - commitmentsHoursWeek,
-  );
-  const bufferHours = Math.round((remainingBeforeBuffer * bufferPercent) / 100);
+  const referenceFilledHours =
+    sleepHoursWeek + maintenanceHoursWeek + commitmentsHoursWeek;
+  const bufferHours = Math.round((totalWeekHours * bufferPercent) / 100);
   const estimatedPlanForHours = Math.max(
     0,
-    Math.round(remainingBeforeBuffer - bufferHours),
+    Math.round(totalWeekHours - bufferHours),
   );
 
   return {
@@ -52,7 +55,7 @@ export const computeWeeklyCapacity = (input: WeeklyCapacityInput) => {
     sleepHoursWeek,
     maintenanceHoursWeek,
     commitmentsHoursWeek,
-    remainingBeforeBuffer,
+    referenceFilledHours,
     bufferPercent,
     bufferHours,
     estimatedPlanForHours,

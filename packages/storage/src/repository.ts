@@ -28,6 +28,7 @@ export interface WeekPlanRepository {
   getWeekPlan(weekStartISO: string): Promise<WeekPlan | null>;
   listWeekPlans(): Promise<WeekPlan[]>;
   saveWeekPlan(plan: WeekPlan): Promise<void>;
+  deleteWeekPlan(weekId: string): Promise<void>;
 }
 
 export interface WeekLogRepository {

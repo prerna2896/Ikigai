@@ -15,6 +15,7 @@ const strictnessOptions: StrictnessOption[] = [
   'somewhat_flexible',
   'structured',
   'very_structured',
+  'no_buffer',
 ];
 
 const professionOptions: Array<{

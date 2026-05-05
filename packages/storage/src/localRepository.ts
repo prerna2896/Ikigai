@@ -322,6 +322,18 @@ export class LocalRepository
     await this.db.weekPlans.put(validated);
   }
 
+  async deleteWeekPlan(weekId: string): Promise<void> {
+    await this.db.transaction(
+      'rw',
+      [this.db.weekPlans, this.db.weekLogs, this.db.weekNotes],
+      async () => {
+        await this.db.weekPlans.delete(weekId);
+        await this.db.weekLogs.where('weekId').equals(weekId).delete();
+        await this.db.weekNotes.where('weekId').equals(weekId).delete();
+      },
+    );
+  }
+
   async getWeekLogs(weekId: string): Promise<WeekLogEntry[]> {
     const logs = await this.db.weekLogs.where('weekId').equals(weekId).toArray();
     return parseOrThrow(z.array(weekLogSchema), logs, 'WeekLog list');
@@ -330,6 +342,19 @@ export class LocalRepository
   async saveWeekLog(entry: WeekLogEntry): Promise<void> {
     const validated = parseOrThrow(weekLogSchema, entry, 'WeekLog');
     await this.db.weekLogs.put(validated);
+    await this.bumpProfileActivity(validated.updatedAt ?? validated.dateISO);
+  }
+
+  private async bumpProfileActivity(timestamp: string): Promise<void> {
+    const existing = await this.db.profiles.toCollection().first();
+    if (!existing) return;
+    const next = {
+      ...existing,
+      lastActivityAt: timestamp,
+      updatedAt: new Date().toISOString(),
+    };
+    const validated = parseOrThrow(profileSchema, next, 'Profile');
+    await this.db.profiles.put(validated);
   }
 
   async getWeekNote(weekId: string): Promise<WeekNote | null> {
@@ -351,6 +376,7 @@ export class LocalRepository
   async saveWeekNote(note: WeekNote): Promise<void> {
     const validated = parseOrThrow(weekNoteSchema, note, 'WeekNote');
     await this.db.weekNotes.put(validated);
+    await this.bumpProfileActivity(validated.updatedAt);
   }
 
   async resetAll(): Promise<void> {

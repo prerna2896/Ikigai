@@ -1,10 +1,20 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import type { Settings, WeekLogEntry, WeekNote, WeekPlan } from '@ikigai/core';
+import Link from 'next/link';
+import type {
+  Settings,
+  WeekLogEntry,
+  WeekNote,
+  WeekPlan,
+} from '@ikigai/core';
 import { getPrincipleForDomain, type IkigaiPrincipleId } from '../../components/IkigaiPrinciplesPlot';
 import { getLocalRepository } from '@ikigai/storage';
 import { getWeekEndISO, withDerivedPlannedHours } from '../week/plan/planUtils';
+import {
+  decodeReflectionNote,
+  type ParsedReflectionNote,
+} from '../../lib/reflectionNotes';
 
 const toLocalDate = (isoDate: string) => {
   const [year, month, day] = isoDate.split('-').map(Number);
@@ -166,13 +176,6 @@ const seedHistoryIfNeeded = async (
     if (secondLog) {
       await repo.saveWeekLog(secondLog);
     }
-    await repo.saveWeekNote({
-      id: crypto.randomUUID(),
-      weekId: plan.id,
-      note: `Quick note for ${formatRange(plan, timeZone)}: this week felt steady in spots, uneven in others.`,
-      createdAt: createdAtISO,
-      updatedAt: createdAtISO,
-    });
   }
 };
 
@@ -182,14 +185,13 @@ export default function HistoryPage() {
   const [weekLogsByWeek, setWeekLogsByWeek] = useState<
     Record<string, WeekLogEntry[]>
   >({});
-  const [weekNote, setWeekNote] = useState<WeekNote | null>(null);
-  const [noteDraft, setNoteDraft] = useState('');
+  const [notesByWeek, setNotesByWeek] = useState<Record<string, WeekNote[]>>(
+    {},
+  );
   const [status, setStatus] = useState<string | null>(null);
-  const [isSavingNote, setIsSavingNote] = useState(false);
   const [selectedHistoryWeekId, setSelectedHistoryWeekId] = useState<string | null>(
     null,
   );
-  const [showSavedNote, setShowSavedNote] = useState(false);
   const [rangeStartId, setRangeStartId] = useState<string | null>(null);
   const [rangeEndId, setRangeEndId] = useState<string | null>(null);
 
@@ -220,6 +222,20 @@ export default function HistoryPage() {
             }),
           );
           setWeekLogsByWeek(logsByWeek);
+          const notesMap: Record<string, WeekNote[]> = {};
+          await Promise.all(
+            sorted.map(async (plan) => {
+              const notes = await repo.listWeekNotes(plan.id);
+              notesMap[plan.id] = [...notes].sort((a, b) =>
+                a.createdAt < b.createdAt
+                  ? 1
+                  : a.createdAt > b.createdAt
+                    ? -1
+                    : 0,
+              );
+            }),
+          );
+          setNotesByWeek(notesMap);
           const currentId = sorted[0].id;
           setSelectedHistoryWeekId((prev) => prev ?? currentId);
         })
@@ -229,24 +245,6 @@ export default function HistoryPage() {
     }
   }, []);
 
-  useEffect(() => {
-    if (!selectedHistoryWeekId) {
-      return;
-    }
-    try {
-      const repo = getLocalRepository();
-      repo
-        .getWeekNote(selectedHistoryWeekId)
-        .then((note) => {
-          setWeekNote(note);
-          setNoteDraft(note?.note ?? '');
-          setShowSavedNote(Boolean(note?.note));
-        })
-        .catch((error) => setStatus(String(error)));
-    } catch (error) {
-      setStatus(String(error));
-    }
-  }, [selectedHistoryWeekId]);
 
   const timeZone =
     settings?.weekTimeZone ||
@@ -568,33 +566,16 @@ export default function HistoryPage() {
       .sort((a, b) => b.avg - a.avg)[0];
   }, [domainInsights]);
 
-  const handleSaveNote = async () => {
-    if (!selectedSummary) {
-      return;
-    }
-    try {
-      const repo = getLocalRepository();
-      setIsSavingNote(true);
-      const nowIso = new Date().toISOString();
-      const entry: WeekNote = {
-        id: weekNote?.id ?? crypto.randomUUID(),
-        weekId: selectedSummary.weekId,
-        note: noteDraft.trim(),
-        createdAt: weekNote?.createdAt ?? nowIso,
-        updatedAt: nowIso,
-      };
-      await repo.saveWeekNote(entry);
-      setWeekNote(entry);
-      setNoteDraft(entry.note);
-      setShowSavedNote(true);
-      setStatus('Note saved.');
-      window.setTimeout(() => setStatus(null), 1500);
-    } catch (error) {
-      setStatus(String(error));
-    } finally {
-      setIsSavingNote(false);
-    }
-  };
+  const reflectionWeeks = useMemo(() => {
+    return weekPlans
+      .map((plan) => {
+        const decoded: ParsedReflectionNote[] = (notesByWeek[plan.id] ?? [])
+          .map(decodeReflectionNote)
+          .filter((n) => n.text.trim().length > 0 || Boolean(n.emoji));
+        return { plan, notes: decoded };
+      })
+      .filter((entry) => entry.notes.length > 0);
+  }, [weekPlans, notesByWeek]);
 
   return (
     <main
@@ -1151,71 +1132,66 @@ export default function HistoryPage() {
 
           <div className="space-y-6">
             <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <div className="flex items-start justify-between">
+              <div className="flex items-start justify-between gap-3">
                 <div>
-                  <h2 className="text-sm font-semibold text-text">Notes</h2>
+                  <h2 className="text-sm font-semibold text-text">
+                    Reflections by week
+                  </h2>
                   <p className="mt-1 text-xs text-mutedText">
-                    Capture context for this week’s report.
+                    Everything saved through Reflect, grouped by week.
                   </p>
                 </div>
-                {weekNote?.note ? (
-                  <button
-                    type="button"
-                    className="text-xs text-mutedText hover:text-text"
-                    onClick={() => {
-                      if (showSavedNote && weekNote?.note) {
-                        setNoteDraft(weekNote.note);
-                      }
-                      setShowSavedNote((prev) => !prev);
-                    }}
-                  >
-                    {showSavedNote ? 'Hide note' : 'View note'}
-                  </button>
-                ) : null}
+                <Link
+                  href="/reflect?view=history"
+                  className="text-xs text-mutedText hover:text-text"
+                >
+                  Open reflect →
+                </Link>
               </div>
-              {isCurrentWeek ? (
-                showSavedNote && weekNote?.note ? (
-                  <div className="mt-4 space-y-3">
-                    <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-3 text-xs text-text">
-                      {weekNote.note}
-                    </div>
-                    <button
-                      type="button"
-                      className="inline-flex items-center justify-center rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-text"
-                      onClick={() => {
-                        setNoteDraft(weekNote.note);
-                        setShowSavedNote(false);
-                      }}
-                    >
-                      Edit note
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <textarea
-                      className="mt-4 h-40 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-text"
-                      value={noteDraft}
-                      onChange={(event) => setNoteDraft(event.target.value)}
-                      placeholder="Anything to remember about this week?"
-                    />
-                    <button
-                      type="button"
-                      className="mt-4 inline-flex w-full items-center justify-center rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-text disabled:opacity-60"
-                      onClick={handleSaveNote}
-                      disabled={isSavingNote}
-                    >
-                      {isSavingNote ? 'Saving…' : 'Save note'}
-                    </button>
-                  </>
-                )
-              ) : weekNote?.note ? (
-                <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50 px-3 py-3 text-xs text-text">
-                  {weekNote.note}
+              {reflectionWeeks.length === 0 ? (
+                <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50 px-3 py-3 text-xs text-mutedText">
+                  No reflections saved yet.
                 </div>
               ) : (
-                <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50 px-3 py-3 text-xs text-mutedText">
-                  No note saved for this week yet.
-                </div>
+                <ol
+                  className="mt-4 max-h-72 space-y-2 overflow-y-auto pr-1"
+                  data-testid="reflection-week-list"
+                >
+                  {reflectionWeeks.map(({ plan, notes }) => {
+                    const isThisWeek = plan.id === currentWeekId;
+                    const checkInCount = notes.filter(
+                      (n) => n.categoryId === 'check_in',
+                    ).length;
+                    const writtenCount = notes.length - checkInCount;
+                    return (
+                      <li key={plan.id}>
+                        <Link
+                          href={`/week/${encodeURIComponent(plan.id)}`}
+                          data-testid="history-reflection-week"
+                          className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-xs transition-colors hover:border-accent/50 hover:bg-accentSoft/40"
+                        >
+                          <span className="min-w-0">
+                            <span className="block text-[11px] uppercase tracking-[0.18em] text-mutedText">
+                              {isThisWeek
+                                ? 'This week'
+                                : formatRange(plan, timeZone)}
+                            </span>
+                            <span className="text-[10px] text-mutedText">
+                              {writtenCount > 0
+                                ? `${writtenCount} note${writtenCount === 1 ? '' : 's'}`
+                                : null}
+                              {writtenCount > 0 && checkInCount > 0 ? ' · ' : ''}
+                              {checkInCount > 0
+                                ? `${checkInCount} check-in${checkInCount === 1 ? '' : 's'}`
+                                : null}
+                            </span>
+                          </span>
+                          <span aria-hidden className="text-mutedText">→</span>
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ol>
               )}
             </div>
             <div className="rounded-xl border border-slate-200 bg-white p-4">
