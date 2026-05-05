@@ -1,16 +1,22 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import type { WeekNote, WeekPlan } from '@ikigai/core';
 import { getLocalRepository } from '@ikigai/storage';
+import {
+  decodeReflectionNote,
+  encodeReflectionNote,
+  formatReflectionTimestamp,
+  reflectionCategoryLabel,
+  type ParsedReflectionNote,
+  type ReflectionCategoryId,
+} from '../../lib/reflectionNotes';
 
-type CategoryId =
-  | 'on_mind'
-  | 'helped'
-  | 'hindered'
-  | 'lessons'
-  | 'check_in';
+type CategoryId = ReflectionCategoryId;
+type ParsedNote = ParsedReflectionNote;
+type ViewMode = 'add' | 'history';
 
 type Category = {
   id: CategoryId;
@@ -46,106 +52,29 @@ const CATEGORIES: Category[] = [
   },
 ];
 
-const ALL_CATEGORY_IDS: CategoryId[] = [
-  ...CATEGORIES.map((c) => c.id),
-  'check_in',
-];
-
 const CHECK_IN_EMOJIS = ['😄', '😭', '😌', '😴', '⭐'] as const;
 
 const QUOTE = 'Clarity comes from looking, not from forcing.';
 
-type ParsedNote = {
-  id: string;
-  categoryId: CategoryId | null;
-  emoji: string | null;
-  text: string;
-  tags: string[];
-  createdAt: string;
-};
-
-const isCategoryId = (value: unknown): value is CategoryId =>
-  typeof value === 'string' &&
-  ALL_CATEGORY_IDS.includes(value as CategoryId);
-
-type EncodeOptions = {
-  emoji?: string | null;
-  tags?: string[];
-};
-
-const encodeNote = (
-  categoryId: CategoryId,
-  text: string,
-  options: EncodeOptions = {},
-) => {
-  const payload: Record<string, unknown> = { categoryId, text };
-  if (options.emoji) payload.emoji = options.emoji;
-  if (options.tags && options.tags.length > 0) payload.tags = options.tags;
-  return JSON.stringify(payload);
-};
-
-const decodeNote = (note: WeekNote): ParsedNote => {
-  const fallback: ParsedNote = {
-    id: note.id,
-    categoryId: null,
-    emoji: null,
-    text: note.note,
-    tags: [],
-    createdAt: note.createdAt,
-  };
-  if (!note.note) return fallback;
-  try {
-    const parsed = JSON.parse(note.note) as unknown;
-    if (
-      parsed &&
-      typeof parsed === 'object' &&
-      'categoryId' in parsed &&
-      'text' in parsed
-    ) {
-      const candidateId = (parsed as { categoryId: unknown }).categoryId;
-      const candidateText = (parsed as { text: unknown }).text;
-      const candidateEmoji = (parsed as { emoji?: unknown }).emoji;
-      const candidateTags = (parsed as { tags?: unknown }).tags;
-      if (isCategoryId(candidateId) && typeof candidateText === 'string') {
-        return {
-          id: note.id,
-          categoryId: candidateId,
-          emoji:
-            typeof candidateEmoji === 'string' && candidateEmoji.length > 0
-              ? candidateEmoji
-              : null,
-          text: candidateText,
-          tags:
-            Array.isArray(candidateTags) &&
-            candidateTags.every((t) => typeof t === 'string')
-              ? (candidateTags as string[])
-              : [],
-          createdAt: note.createdAt,
-        };
-      }
-    }
-  } catch {
-    // Not JSON — treat as legacy/free-form note.
-  }
-  return fallback;
-};
-
-const formatTimestamp = (iso: string) => {
-  try {
-    const date = new Date(iso);
-    return date.toLocaleString('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-    });
-  } catch {
-    return iso;
-  }
-};
-
 export default function ReflectPage() {
+  return (
+    <Suspense fallback={null}>
+      <ReflectPageContent />
+    </Suspense>
+  );
+}
+
+function ReflectPageContent() {
+  const searchParams = useSearchParams();
+  const initialView: ViewMode =
+    searchParams.get('view') === 'history' ? 'history' : 'add';
+  const [view, setView] = useState<ViewMode>(initialView);
+
+  useEffect(() => {
+    const next = searchParams.get('view') === 'history' ? 'history' : 'add';
+    setView(next);
+  }, [searchParams]);
+
   const [latestWeek, setLatestWeek] = useState<WeekPlan | null>(null);
   const [notes, setNotes] = useState<ParsedNote[]>([]);
   const [activeCategoryId, setActiveCategoryId] = useState<CategoryId | null>(
@@ -161,10 +90,10 @@ export default function ReflectPage() {
   const [checkInStatus, setCheckInStatus] = useState<string | null>(null);
   const [checkInError, setCheckInError] = useState<string | null>(null);
 
-  const loadNotes = useCallback(async (week: WeekPlan) => {
+  const refreshLatestNotes = useCallback(async (plan: WeekPlan) => {
     const repo = getLocalRepository();
-    const records = await repo.listWeekNotes(week.id);
-    const parsed = records.map(decodeNote);
+    const records = await repo.listWeekNotes(plan.id);
+    const parsed = records.map(decodeReflectionNote);
     parsed.sort((a, b) =>
       a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0,
     );
@@ -182,9 +111,8 @@ export default function ReflectPage() {
           const sorted = [...plans].sort((a, b) =>
             a.weekStartISO < b.weekStartISO ? 1 : -1,
           );
-          const latest = sorted[0];
-          setLatestWeek(latest);
-          await loadNotes(latest);
+          setLatestWeek(sorted[0]);
+          await refreshLatestNotes(sorted[0]);
         })
         .catch((err) => {
           if (!cancelled) setError(String(err));
@@ -195,7 +123,7 @@ export default function ReflectPage() {
     return () => {
       cancelled = true;
     };
-  }, [loadNotes]);
+  }, [refreshLatestNotes]);
 
   useEffect(() => {
     if (!activeCategoryId) return;
@@ -263,12 +191,12 @@ export default function ReflectPage() {
       const newNote: WeekNote = {
         id: crypto.randomUUID(),
         weekId: latestWeek.id,
-        note: encodeNote(activeCategory.id, text),
+        note: encodeReflectionNote(activeCategory.id, text),
         createdAt: nowIso,
         updatedAt: nowIso,
       };
       await repo.saveWeekNote(newNote);
-      await loadNotes(latestWeek);
+      await refreshLatestNotes(latestWeek);
       setJustSavedId(newNote.id);
       setDraft('');
     } catch (err) {
@@ -297,14 +225,14 @@ export default function ReflectPage() {
       const newNote: WeekNote = {
         id: crypto.randomUUID(),
         weekId: latestWeek.id,
-        note: encodeNote('check_in', checkInText.trim(), {
+        note: encodeReflectionNote('check_in', checkInText.trim(), {
           emoji: checkInEmoji,
         }),
         createdAt: nowIso,
         updatedAt: nowIso,
       };
       await repo.saveWeekNote(newNote);
-      await loadNotes(latestWeek);
+      await refreshLatestNotes(latestWeek);
       setCheckInEmoji(null);
       setCheckInText('');
       setCheckInStatus('Logged.');
@@ -324,9 +252,47 @@ export default function ReflectPage() {
         </p>
         <h1 className="text-3xl font-semibold text-text">Reflect</h1>
         <p className="text-sm text-mutedText sm:text-base">
-          Tap a card to leave a note. Every entry stays with this week.
+          {view === 'add'
+            ? 'Tap a card to leave a note. Every entry stays with this week.'
+            : 'Everything you’ve saved against this week.'}
         </p>
       </header>
+
+      <div
+        className="inline-flex items-center gap-1 self-start rounded-full border border-slate-200 bg-white p-1 text-xs"
+        role="tablist"
+        aria-label="Reflect view"
+        data-testid="reflect-view-tabs"
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={view === 'add'}
+          onClick={() => setView('add')}
+          data-testid="reflect-view-add"
+          className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+            view === 'add'
+              ? 'bg-accent text-white shadow-sm'
+              : 'text-mutedText hover:text-text'
+          }`}
+        >
+          Add
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={view === 'history'}
+          onClick={() => setView('history')}
+          data-testid="reflect-view-history"
+          className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+            view === 'history'
+              ? 'bg-accent text-white shadow-sm'
+              : 'text-mutedText hover:text-text'
+          }`}
+        >
+          Past · {notes.filter((n) => n.text || n.emoji).length}
+        </button>
+      </div>
 
       {!latestWeek ? (
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
@@ -350,6 +316,8 @@ export default function ReflectPage() {
         </div>
       ) : null}
 
+      {view === 'add' ? (
+      <>
       <section
         className="rounded-2xl border border-slate-200 bg-surface p-4 shadow-sm sm:p-5"
         aria-labelledby="check-in-heading"
@@ -449,6 +417,10 @@ export default function ReflectPage() {
       <p className="text-center text-sm italic text-mutedText">
         &ldquo;{QUOTE}&rdquo;
       </p>
+      </>
+      ) : (
+        <PastReflections notes={notes} />
+      )}
 
       {activeCategory ? (
         <ReflectModal
@@ -465,6 +437,114 @@ export default function ReflectPage() {
         />
       ) : null}
     </main>
+  );
+}
+
+const CATEGORY_ORDER: ReflectionCategoryId[] = [
+  'on_mind',
+  'helped',
+  'hindered',
+  'lessons',
+  'check_in',
+];
+
+function PastReflections({ notes }: { notes: ParsedNote[] }) {
+  const groups = useMemo(() => {
+    const buckets = new Map<ReflectionCategoryId, ParsedNote[]>();
+    for (const note of notes) {
+      if (!note.categoryId) continue;
+      const hasContent = note.text.trim().length > 0 || Boolean(note.emoji);
+      if (!hasContent) continue;
+      const list = buckets.get(note.categoryId) ?? [];
+      list.push(note);
+      buckets.set(note.categoryId, list);
+    }
+    return CATEGORY_ORDER.flatMap((id) => {
+      const entries = buckets.get(id);
+      if (!entries || entries.length === 0) return [];
+      return [{ id, entries }];
+    });
+  }, [notes]);
+
+  if (groups.length === 0) {
+    return (
+      <p className="rounded-2xl border border-slate-200 bg-surface p-6 text-sm text-mutedText shadow-sm">
+        Nothing saved against this week yet. Add your first note from the Add
+        tab.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-4" data-testid="reflect-history-list">
+      {groups.map((group) => {
+        const isCheckIn = group.id === 'check_in';
+        return (
+          <section
+            key={group.id}
+            className="rounded-2xl border border-slate-200 bg-surface p-4 shadow-sm"
+            data-testid="reflect-history-group"
+          >
+            <div className="flex items-baseline justify-between gap-2">
+              <h2 className="text-xs uppercase tracking-[0.18em] text-mutedText">
+                {isCheckIn
+                  ? 'Check-ins'
+                  : reflectionCategoryLabel(group.id)}
+              </h2>
+              <span className="text-[11px] text-mutedText">
+                {group.entries.length}{' '}
+                {group.entries.length === 1 ? 'entry' : 'entries'}
+              </span>
+            </div>
+
+            {isCheckIn ? (
+              <ul
+                className="mt-3 flex flex-wrap gap-2"
+                aria-label="Check-ins"
+              >
+                {group.entries.map((entry) => (
+                  <li
+                    key={entry.id}
+                    className="flex items-center gap-2 rounded-full border border-slate-200 bg-bg/40 px-3 py-1 text-xs text-mutedText"
+                    data-testid="reflect-history-entry"
+                    title={formatReflectionTimestamp(entry.createdAt)}
+                  >
+                    {entry.emoji ? (
+                      <span aria-hidden className="text-base leading-none">
+                        {entry.emoji}
+                      </span>
+                    ) : null}
+                    {entry.text ? (
+                      <span className="text-text">{entry.text}</span>
+                    ) : null}
+                    <span className="text-[10px] text-mutedText">
+                      {formatReflectionTimestamp(entry.createdAt)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <ol className="mt-3 space-y-2">
+                {group.entries.map((entry) => (
+                  <li
+                    key={entry.id}
+                    className="rounded-xl border border-slate-100 bg-bg/40 px-3 py-2"
+                    data-testid="reflect-history-entry"
+                  >
+                    <p className="whitespace-pre-wrap text-sm text-text">
+                      {entry.text}
+                    </p>
+                    <p className="mt-1 text-[10px] text-mutedText">
+                      {formatReflectionTimestamp(entry.createdAt)}
+                    </p>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </section>
+        );
+      })}
+    </div>
   );
 }
 
@@ -592,7 +672,7 @@ function ReflectModal({
                     }`}
                   >
                     <p className="text-xs uppercase tracking-[0.16em] text-mutedText">
-                      {formatTimestamp(entry.createdAt)}
+                      {formatReflectionTimestamp(entry.createdAt)}
                     </p>
                     <p className="mt-1 whitespace-pre-wrap text-sm text-text">
                       {entry.text}
