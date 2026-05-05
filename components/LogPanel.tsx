@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { WeekLogEntry, WeekPlan } from '@ikigai/core';
 import { getLocalRepository } from '@ikigai/storage';
 import { addDomainToPlan, withDerivedPlannedHours } from '../app/week/plan/planUtils';
+import WeekGoals from './WeekGoals';
 
 type LogFormState = Record<string, string>;
 
@@ -123,6 +124,20 @@ export default function LogPanel({
     ? Object.values(lastLog.taskHours).reduce((sum, h) => sum + h, 0)
     : 0;
 
+  const totalPlannedHours = useMemo(
+    () =>
+      tasksForLog.reduce((sum, task) => sum + (task.plannedHours || 0), 0),
+    [tasksForLog],
+  );
+  const totalCompletedHours = useMemo(
+    () => Object.values(weekTotals).reduce((sum, h) => sum + h, 0),
+    [weekTotals],
+  );
+  const hoursLeftToLog = Math.max(
+    0,
+    Math.round(totalPlannedHours - totalCompletedHours),
+  );
+
   const handleLogChange = (taskId: string, value: string) => {
     setLogForm((prev) => ({ ...prev, [taskId]: formatHoursInput(value) }));
   };
@@ -241,6 +256,15 @@ export default function LogPanel({
 
   return (
     <section className={containerClass} data-testid="log-panel">
+      <WeekGoals
+        plan={plan}
+        mode="checklist"
+        onPlanChange={(next) => {
+          setPlan(next);
+          onPlanChange?.(next);
+        }}
+      />
+
       <div className="flex items-baseline justify-between gap-3">
         <div className="space-y-1">
           {lastLogDate ? (
@@ -258,6 +282,26 @@ export default function LogPanel({
         ) : null}
       </div>
 
+      {totalPlannedHours > 0 ? (
+        <div
+          className="rounded-xl border border-slate-200 bg-bg/40 p-3 text-xs text-mutedText"
+          data-testid="log-summary"
+        >
+          <div className="flex flex-wrap items-baseline justify-between gap-3">
+            <span>
+              <span className="font-medium uppercase tracking-[0.16em]">
+                This week
+              </span>{' '}
+              · {Math.round(totalCompletedHours)}h of{' '}
+              {Math.round(totalPlannedHours)}h logged
+            </span>
+            <span className="font-medium text-text">
+              {hoursLeftToLog}h left
+            </span>
+          </div>
+        </div>
+      ) : null}
+
       {error ? (
         <div
           role="alert"
@@ -272,52 +316,64 @@ export default function LogPanel({
           This plan has no tasks yet. Open the plan to add some.
         </p>
       ) : (
-        <div className="space-y-3">
-          {tasksForLog.map((task) => (
-            <div
-              key={task.id}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-2 text-sm text-text"
-            >
-              <div className="flex min-w-[160px] flex-1 items-center gap-3">
+        <div className="space-y-2">
+          {tasksForLog.map((task) => {
+            const completed = Math.round(weekTotals[task.id] || 0);
+            const planned = Math.round(task.plannedHours || 0);
+            const left = Math.max(0, planned - completed);
+            const isDone = planned > 0 && completed >= planned;
+            return (
+              <div
+                key={task.id}
+                className="flex items-center gap-3 rounded-xl border border-slate-200 px-3 py-2 text-sm text-text"
+              >
                 <span
-                  className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-base"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-base"
                   title={task.domainName}
                   aria-label={task.domainName}
                 >
                   {getDomainIcon(task.domainName)}
                 </span>
-                <span className="font-medium">{task.title}</span>
-              </div>
-              <div className="flex items-center gap-4 text-xs text-mutedText">
-                <div className="flex items-center gap-2">
-                  <span>Planned</span>
-                  <span className="font-medium text-text">
-                    {Math.round(task.plannedHours)}h
-                  </span>
+                <p className="min-w-0 flex-1 truncate font-medium">
+                  {task.title}
+                </p>
+                <div className="flex shrink-0 flex-col items-end leading-tight">
+                  {planned > 0 ? (
+                    <>
+                      <span
+                        className={`text-sm font-semibold ${
+                          isDone ? 'text-accent' : 'text-text'
+                        }`}
+                      >
+                        {completed}h / {planned}h
+                      </span>
+                      <span className="text-[11px] text-mutedText">
+                        {isDone ? 'all done' : `${left}h left`}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-[11px] text-mutedText">
+                      {completed}h logged
+                    </span>
+                  )}
                 </div>
-                <div className="flex items-center gap-2">
-                  <span>Completed</span>
-                  <span className="font-medium text-text">
-                    {Math.round(weekTotals[task.id] || 0)}h
-                  </span>
-                </div>
+                <label className="sr-only" htmlFor={`log-${task.id}`}>
+                  Hours for {task.title}
+                </label>
+                <input
+                  id={`log-${task.id}`}
+                  type="text"
+                  inputMode="numeric"
+                  className="w-16 shrink-0 rounded-lg border border-slate-200 px-2 py-1 text-sm text-text"
+                  value={logForm[task.id] ?? ''}
+                  onChange={(event) =>
+                    handleLogChange(task.id, event.target.value)
+                  }
+                  placeholder="+0"
+                />
               </div>
-              <label className="sr-only" htmlFor={`log-${task.id}`}>
-                Hours for {task.title}
-              </label>
-              <input
-                id={`log-${task.id}`}
-                type="text"
-                inputMode="numeric"
-                className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-sm text-text"
-                value={logForm[task.id] ?? ''}
-                onChange={(event) =>
-                  handleLogChange(task.id, event.target.value)
-                }
-                placeholder="0"
-              />
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -413,15 +469,6 @@ export default function LogPanel({
         {isSaving ? 'Saving…' : 'Save log'}
       </button>
 
-      {Object.keys(weekTotals).length > 0 ? (
-        <p className="text-xs text-mutedText">
-          Week total so far:{' '}
-          {Math.round(
-            Object.values(weekTotals).reduce((sum, h) => sum + h, 0),
-          )}
-          h
-        </p>
-      ) : null}
     </section>
   );
 }
