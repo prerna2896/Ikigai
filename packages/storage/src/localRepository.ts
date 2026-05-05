@@ -322,6 +322,18 @@ export class LocalRepository
     await this.db.weekPlans.put(validated);
   }
 
+  async deleteWeekPlan(weekId: string): Promise<void> {
+    await this.db.transaction(
+      'rw',
+      [this.db.weekPlans, this.db.weekLogs, this.db.weekNotes],
+      async () => {
+        await this.db.weekPlans.delete(weekId);
+        await this.db.weekLogs.where('weekId').equals(weekId).delete();
+        await this.db.weekNotes.where('weekId').equals(weekId).delete();
+      },
+    );
+  }
+
   async getWeekLogs(weekId: string): Promise<WeekLogEntry[]> {
     const logs = await this.db.weekLogs.where('weekId').equals(weekId).toArray();
     return parseOrThrow(z.array(weekLogSchema), logs, 'WeekLog list');

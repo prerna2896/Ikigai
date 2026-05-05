@@ -3,8 +3,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { DomainTask, Settings, WeekPlan } from '@ikigai/core';
-import { getOpeningRemark, PROFESSION_COMMITMENT_LABELS } from '@ikigai/core';
+import {
+  computeWeeklyCapacity,
+  getBufferPercentForStrictness,
+  getOpeningRemark,
+  PROFESSION_COMMITMENT_LABELS,
+} from '@ikigai/core';
 import { getLocalRepository } from '@ikigai/storage';
+import CapacityCard from '../../../components/CapacityCard';
+import WeekGoals from '../../../components/WeekGoals';
 import IkigaiWheelPlot from '../../../components/IkigaiWheelPlot';
 import IkigaiPrinciplesPlot, {
   getPrincipleForDomain,
@@ -91,20 +98,20 @@ export default function WeekPlanPage() {
             Intl.DateTimeFormat().resolvedOptions().timeZone ||
             'UTC';
           const weekStartDay = settingsRecord.weekStartDay || 'sunday';
-          const preferNextWeek = plans.length === 0;
-          const weekStartISO = getWeekStartISO(
+          const todayStartISO = getWeekStartISO(
             new Date(),
             weekStartDay,
-            preferNextWeek,
+            false,
           );
           const sortedPlans = [...plans].sort((a, b) =>
             a.weekStartISO < b.weekStartISO ? 1 : -1,
           );
-          let plan = await repo.getWeekPlan(weekStartISO);
-          if (!plan && sortedPlans.length > 0) {
-            plan = sortedPlans[0];
-          }
-          const effectiveWeekStartISO = plan?.weekStartISO ?? weekStartISO;
+          // Always plan the current week. If a plan exists for it, use that.
+          // Otherwise create a fresh draft for the current week. Stale and
+          // future-week plans never override the current-week intent.
+          const plan = await repo.getWeekPlan(todayStartISO);
+          const effectiveWeekStartISO =
+            plan?.weekStartISO ?? todayStartISO;
           const weekEndISO = getWeekEndISO(effectiveWeekStartISO);
           const previousPlan = sortedPlans.find(
             (candidate) => candidate.weekStartISO !== effectiveWeekStartISO,
@@ -148,7 +155,7 @@ export default function WeekPlanPage() {
             return;
           }
           const freshPlan = createDefaultWeekPlan(
-            weekStartISO,
+            effectiveWeekStartISO,
             weekEndISO,
             weekStartDay,
             timeZone,
@@ -450,6 +457,46 @@ export default function WeekPlanPage() {
     void persistPlan({ ...weekPlan, isFrozen: false });
   };
 
+  const handleResetWeek = async () => {
+    if (!repository || !weekPlan || !settings) {
+      return;
+    }
+    const confirmed = window.confirm(
+      'Reset this week’s plan? This deletes the current plan, its log entries, and any reflection notes attached to it.',
+    );
+    if (!confirmed) {
+      return;
+    }
+    try {
+      const previousId = weekPlan.id;
+      const weekStartDay = settings.weekStartDay || 'sunday';
+      const timeZone =
+        settings.weekTimeZone ||
+        Intl.DateTimeFormat().resolvedOptions().timeZone ||
+        'UTC';
+      const weekStartISO = getWeekStartISO(new Date(), weekStartDay, false);
+      const weekEndISO = getWeekEndISO(weekStartISO);
+      const freshPlan = createDefaultWeekPlan(
+        weekStartISO,
+        weekEndISO,
+        weekStartDay,
+        timeZone,
+      );
+      await repository.deleteWeekPlan(previousId);
+      await repository.saveWeekPlan(freshPlan);
+      const derived = withDerivedPlannedHours(freshPlan);
+      setWeekPlan(derived);
+      setSelectedDomainId(null);
+      setSidebarOpen(false);
+      setTaskTitle('');
+      setTaskHours('1');
+      setStatus('Week reset.');
+      window.setTimeout(() => setStatus(null), 1500);
+    } catch (error) {
+      setStatus(String(error));
+    }
+  };
+
   const selectedDomain = weekPlan?.domains.find(
     (domain) => domain.id === selectedDomainId,
   );
@@ -493,7 +540,16 @@ export default function WeekPlanPage() {
     }, 0);
   }, [taskList]);
 
-  const planningCapacityHours = settings ? settings.weeklyCapacityHours : null;
+  const planningCapacityHours = useMemo(() => {
+    if (!settings) return null;
+    return computeWeeklyCapacity({
+      sleepHoursPerDay: settings.sleepHoursPerDay,
+      maintenanceHoursPerDay: settings.maintenanceHoursPerDay,
+      jobHoursPerWeek: settings.jobHoursPerWeek,
+      classHoursPerWeek: settings.classHoursPerWeek,
+      bufferPercent: getBufferPercentForStrictness(settings.strictness),
+    }).estimatedPlanForHours;
+  }, [settings]);
 
   const planningHoursLeft =
     planningCapacityHours !== null
@@ -574,24 +630,68 @@ export default function WeekPlanPage() {
       data-testid="planning-page"
     >
       <header className="space-y-3" data-testid="planning-banner">
-        <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
-          {PLAN_COPY.headerLabel}
-        </p>
-        {weekRangeLabel ? (
-          <p className="text-sm text-mutedText">{weekRangeLabel}</p>
-        ) : null}
-        <h1 className="text-3xl font-semibold text-text">
-          {remark?.title ?? PLAN_COPY.fallbackTitle}
-        </h1>
-        <p className="text-sm text-mutedText">
-          {remark?.body ?? PLAN_COPY.fallbackBody}
-        </p>
+        <div className="flex items-start justify-between gap-3">
+          <div className="space-y-3">
+            <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
+              {PLAN_COPY.headerLabel}
+            </p>
+            {weekRangeLabel ? (
+              <p className="text-sm text-mutedText">{weekRangeLabel}</p>
+            ) : null}
+            <h1 className="text-3xl font-semibold text-text">
+              {remark?.title ?? PLAN_COPY.fallbackTitle}
+            </h1>
+            <p className="text-sm text-mutedText">
+              {remark?.body ?? PLAN_COPY.fallbackBody}
+            </p>
+          </div>
+          {weekPlan ? (
+            <button
+              type="button"
+              onClick={() => void handleResetWeek()}
+              data-testid="reset-week"
+              title="Reset this week"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-slate-300 px-3 py-1.5 text-xs font-medium text-mutedText transition-colors hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700 focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2"
+            >
+              <svg
+                viewBox="0 0 16 16"
+                aria-hidden
+                className="h-3.5 w-3.5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M2.5 8a5.5 5.5 0 1 0 1.7-3.95" />
+                <path d="M2.5 3v3h3" />
+              </svg>
+              Reset week
+            </button>
+          ) : null}
+        </div>
         {status ? (
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
             {status}
           </div>
         ) : null}
       </header>
+
+      {settings && !planningComplete ? (
+        <CapacityCard
+          settings={settings}
+          plannedTaskHours={plannedTaskHours}
+          onSettingsChange={(next) => setSettings(next)}
+        />
+      ) : null}
+
+      {weekPlan && !planningComplete ? (
+        <WeekGoals
+          plan={weekPlan}
+          mode="editor"
+          onPlanChange={(next) => setWeekPlan(withDerivedPlannedHours(next))}
+        />
+      ) : null}
 
       {!planningComplete ? (
         <section className="rounded-2xl border border-slate-200 bg-surface p-6 shadow-sm">

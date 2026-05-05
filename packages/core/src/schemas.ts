@@ -53,6 +53,7 @@ export const settingsSchema = z.object({
     'somewhat_flexible',
     'structured',
     'very_structured',
+    'no_buffer',
   ]),
   createdAt: isoDateString,
   updatedAt: isoDateString,
@@ -117,6 +118,12 @@ export const weekDomainSchema = z.object({
   tasks: z.array(domainTaskSchema),
 });
 
+export const weekGoalSchema = z.object({
+  id: z.string(),
+  text: z.string(),
+  completedAt: isoDateString.nullable().optional(),
+});
+
 export const weekPlanSchema = z.object({
   id: z.string(),
   weekStartISO: z.string(),
@@ -133,6 +140,7 @@ export const weekPlanSchema = z.object({
   weekTimeZone: z.string(),
   createdAtISO: isoDateString,
   domains: z.array(weekDomainSchema).max(7),
+  goals: z.array(weekGoalSchema).max(3).optional(),
   isFrozen: z.boolean(),
 });
 

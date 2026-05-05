@@ -42,7 +42,8 @@ export type Settings = {
     | 'very_flexible'
     | 'somewhat_flexible'
     | 'structured'
-    | 'very_structured';
+    | 'very_structured'
+    | 'no_buffer';
   checkInFrequency?: 'daily' | 'few_days' | 'weekly';
   planningFrequency?: 'daily' | 'weekly' | 'monthly';
   createdAt: string;
@@ -128,6 +129,12 @@ export type WeekDomain = {
   tasks: DomainTask[];
 };
 
+export type WeekGoal = {
+  id: string;
+  text: string;
+  completedAt?: string | null;
+};
+
 export type WeekPlan = {
   id: string;
   weekStartISO: string;
@@ -143,6 +150,7 @@ export type WeekPlan = {
   weekTimeZone: string;
   createdAtISO: string;
   domains: WeekDomain[];
+  goals?: WeekGoal[];
   isFrozen: boolean;
 };
 

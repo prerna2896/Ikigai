@@ -284,7 +284,7 @@ function UnplannedWeekHome({ latestPlan }: { latestPlan: WeekPlan | null }) {
     <>
       <section
         className="rounded-2xl border border-slate-200 bg-surface p-6 shadow-sm"
-        data-testid="home-plan-cta"
+        data-testid={latestPlan ? 'latest-week' : 'home-plan-cta'}
       >
         <h2 className="text-lg font-semibold text-text">Plan this week</h2>
         <p className="mt-2 text-sm text-mutedText">
