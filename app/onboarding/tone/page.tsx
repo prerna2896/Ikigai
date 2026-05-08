@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { type Settings } from '@ikigai/core';
 import { getLocalRepository } from '@ikigai/storage';
+import { OnboardingProgress } from '../../../components/OnboardingProgress';
 
 const toneOptions: Array<{
   label: string;
@@ -59,64 +60,66 @@ export default function OnboardingTonePage() {
 
   return (
     <main
-      className="mx-auto flex min-h-screen max-w-3xl flex-col gap-8 px-6 py-16"
+      className="mx-auto flex min-h-screen max-w-3xl flex-col gap-8 px-6 pb-12 pt-12"
       data-testid="onboarding-tone"
     >
-      <section className="rounded-2xl border border-slate-200 bg-surface p-8 shadow-sm">
-        <div className="space-y-4">
-          <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
-            Tone
-          </p>
-          <h1 className="text-3xl font-semibold text-text">
-            How would you like this to feel?
-          </h1>
-          <p className="text-sm text-mutedText">
-            There’s no right choice. This just helps set the tone.
-          </p>
-          <div className="flex flex-col gap-3" data-testid="onboarding-tone-options">
-            {toneOptions.map((option) => (
-              <label
-                key={option.label}
-                className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-text"
-              >
-                <input
-                  type="radio"
-                  name="preferred-tone"
-                  value={option.label}
-                  checked={preferredTone === option.value}
-                  onChange={() => setPreferredTone(option.value)}
-                  data-testid={`tone-option-${option.value ?? 'unsure'}`}
-                />
-                {option.label}
-              </label>
-            ))}
-          </div>
-          {status ? (
-            <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
-              {status}
-            </div>
-          ) : null}
-          <div className="pt-2 flex items-center justify-between gap-3">
+      <OnboardingProgress step={2} total={5} label="Style" />
+      <header className="space-y-3">
+        <h1 className="font-serif text-3xl font-semibold text-text">
+          How would you like this to feel?
+        </h1>
+        <p className="text-sm text-mutedText">
+          There’s no right choice. This just helps set the tone.
+        </p>
+      </header>
+      <section
+        className="grid grid-cols-1 gap-3 sm:grid-cols-2"
+        data-testid="onboarding-tone-options"
+      >
+        {toneOptions.map((option) => {
+          const selected = preferredTone === option.value;
+          return (
             <button
+              key={option.label}
               type="button"
-              className="rounded-full border border-slate-300 px-4 py-2 text-sm text-text"
-              onClick={() => router.replace('/onboarding/context')}
-              data-testid="onboarding-back"
+              onClick={() => setPreferredTone(option.value)}
+              data-testid={`tone-option-${option.value ?? 'unsure'}`}
+              aria-pressed={selected}
+              className={`min-h-12 rounded-xl border px-4 py-3 text-sm font-medium transition-colors ${
+                selected
+                  ? 'border-accent bg-accent text-white shadow-sm'
+                  : 'border-slate-200 bg-white text-text hover:border-slate-300'
+              }`}
             >
-              Back
+              {option.label}
             </button>
-            <button
-              type="button"
-              className="inline-flex items-center rounded-full bg-accent px-5 py-2 text-sm font-medium text-white"
-              onClick={() => void handleContinue()}
-              disabled={!repository}
-              data-testid="onboarding-next"
-            >
-              Continue
-            </button>
-          </div>
-        </div>
+          );
+        })}
       </section>
+      {status ? (
+        <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+          {status}
+        </div>
+      ) : null}
+      <footer className="flex items-center justify-between">
+        <button
+          type="button"
+          className="rounded-full border border-slate-300 px-4 py-2 text-sm text-text"
+          onClick={() => router.replace('/onboarding/context')}
+          data-testid="onboarding-back"
+        >
+          ← Back
+        </button>
+        <button
+          type="button"
+          className="inline-flex items-center gap-2 rounded-full bg-accent px-5 py-2 text-sm font-medium text-white"
+          onClick={() => void handleContinue()}
+          disabled={!repository}
+          data-testid="onboarding-next"
+        >
+          Continue <span aria-hidden>→</span>
+        </button>
+      </footer>
     </main>
   );
 }

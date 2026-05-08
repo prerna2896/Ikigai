@@ -10,7 +10,7 @@ const tabs = [
   { label: 'Plan', href: '/week/plan', testId: 'home-tab-planning' },
   { label: 'Log', href: '/log', testId: 'home-tab-log' },
   { label: 'Reflect', href: '/reflect', testId: 'home-tab-reflect' },
-  { label: 'History', href: '/history', testId: 'home-tab-history' },
+  { label: 'Overview', href: '/history', testId: 'home-tab-history' },
 ] as const;
 
 const getInitials = (name: string | null | undefined) => {

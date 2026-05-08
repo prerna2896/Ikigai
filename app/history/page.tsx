@@ -584,7 +584,7 @@ export default function HistoryPage() {
     >
       <header className="space-y-3">
         <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
-          History
+          Overview
         </p>
         <h1 className="text-3xl font-semibold text-text">
           Weekly follow-through and patterns

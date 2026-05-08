@@ -13,7 +13,7 @@ test('home tabs navigate to primary areas', async ({ page }) => {
 
   await expect(goPlanning).toHaveText('Plan');
   await expect(openProfile).toHaveAccessibleName('Profile');
-  await expect(viewHistory).toHaveText('History');
+  await expect(viewHistory).toHaveText('Overview');
 
   await goPlanning.click();
   await expect(page).toHaveURL(/(week\/plan|onboarding\/context)/);

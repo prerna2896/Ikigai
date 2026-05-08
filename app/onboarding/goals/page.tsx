@@ -122,7 +122,7 @@ export default function OnboardingGoalsPage() {
       className="mx-auto flex min-h-screen max-w-3xl flex-col gap-8 px-6 pb-12 pt-16"
       data-testid="onboarding-goals"
     >
-      <OnboardingProgress step={4} total={5} />
+      <OnboardingProgress step={4} total={5} label="Domains" />
 
       <header className="space-y-3">
         <p className="text-xs uppercase tracking-[0.2em] text-mutedText">

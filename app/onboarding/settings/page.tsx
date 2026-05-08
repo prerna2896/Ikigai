@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { getBufferPercentForStrictness, type Settings } from '@ikigai/core';
 import { getLocalRepository } from '@ikigai/storage';
 import { settingsSteps } from './onboardingConfig';
+import { OnboardingProgress } from '../../../components/OnboardingProgress';
 
 type WeeklyCapacityMode = 'auto' | 'custom';
 
@@ -181,11 +182,9 @@ function OnboardingSettingsContent() {
       className="mx-auto flex min-h-screen max-w-3xl flex-col gap-8 px-6 py-12"
       data-testid="onboarding-settings"
     >
+      <OnboardingProgress step={5} total={5} label="Settings" />
       <header className="space-y-3">
-        <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
-          Settings
-        </p>
-        <h1 className="text-3xl font-semibold text-text">{activeStep.title}</h1>
+        <h1 className="font-serif text-3xl font-semibold text-text">{activeStep.title}</h1>
         {activeStep.helper ? (
           <p className="text-sm text-mutedText">{activeStep.helper}</p>
         ) : null}

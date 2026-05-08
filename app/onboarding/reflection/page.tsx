@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { type Profile } from '@ikigai/core';
 import { getLocalRepository } from '@ikigai/storage';
 import { reflectionQuestions } from './questions';
+import { OnboardingProgress } from '../../../components/OnboardingProgress';
 
 export default function OnboardingReflectionPage() {
   const router = useRouter();
@@ -71,11 +72,9 @@ export default function OnboardingReflectionPage() {
       className="mx-auto flex min-h-screen max-w-3xl flex-col gap-8 px-6 py-12"
       data-testid="onboarding-reflection"
     >
+      <OnboardingProgress step={3} total={5} label="Reflection" />
       <header className="space-y-3">
-        <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
-          Reflection
-        </p>
-        <h1 className="text-3xl font-semibold text-text">
+        <h1 className="font-serif text-3xl font-semibold text-text">
           A few gentle questions
         </h1>
         <p className="text-sm text-mutedText">

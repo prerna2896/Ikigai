@@ -3,24 +3,35 @@
 type OnboardingProgressProps = {
   step: number;
   total: number;
+  label?: string;
 };
 
-export function OnboardingProgress({ step, total }: OnboardingProgressProps) {
-  const percent = Math.round((step / total) * 100);
+export function OnboardingProgress({ step, total, label }: OnboardingProgressProps) {
+  const segments = Array.from({ length: total }, (_, index) => index < step);
 
   return (
-    <div className="fixed inset-x-0 top-0 z-50">
-      <div className="h-1 w-full bg-slate-100">
-        <div
-          className="h-1 bg-accent transition-all duration-300"
-          style={{ width: `${percent}%` }}
-        />
+    <div className="space-y-2">
+      <div
+        className="grid gap-2"
+        style={{ gridTemplateColumns: `repeat(${total}, minmax(0, 1fr))` }}
+        role="progressbar"
+        aria-valuenow={step}
+        aria-valuemin={0}
+        aria-valuemax={total}
+      >
+        {segments.map((filled, index) => (
+          <div
+            key={index}
+            className={`h-1 rounded-full transition-colors duration-300 ${
+              filled ? 'bg-accent' : 'bg-slate-200'
+            }`}
+          />
+        ))}
       </div>
-      <div className="px-6 pt-1">
-        <p className="text-right text-xs text-mutedText">
-          Step {step} of {total}
-        </p>
-      </div>
+      <p className="text-xs text-mutedText">
+        Step {step} of {total}
+        {label ? ` · ${label}` : ''}
+      </p>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { type Profile } from '@ikigai/core';
 import { getLocalRepository } from '@ikigai/storage';
+import { OnboardingProgress } from '../../../components/OnboardingProgress';
 
 export default function OnboardingContextPage() {
   const router = useRouter();
@@ -39,15 +40,13 @@ export default function OnboardingContextPage() {
 
   return (
     <main
-      className="mx-auto flex min-h-screen max-w-3xl flex-col gap-8 px-6 py-16"
+      className="mx-auto flex min-h-screen max-w-3xl flex-col gap-8 px-6 pb-12 pt-12"
       data-testid="onboarding-context"
     >
+      <OnboardingProgress step={1} total={5} label="Context" />
       <section className="rounded-2xl border border-slate-200 bg-surface p-8 shadow-sm">
         <div className="space-y-4">
-          <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
-            A quick pause
-          </p>
-          <h1 className="text-3xl font-semibold text-text">
+          <h1 className="font-serif text-3xl font-semibold text-text">
             {profileName
               ? `${profileName}, a calm place to plan and recalibrate.`
               : 'A calm place to plan and recalibrate.'}

@@ -216,26 +216,33 @@ export default function HomePage() {
 
 function NoOnboarding() {
   return (
-    <section className="rounded-2xl border border-slate-200 bg-surface p-6 shadow-sm">
-      <h2 className="text-lg font-semibold text-text">Welcome.</h2>
-      <p className="mt-2 text-sm text-mutedText">
-        Set up your profile and your first week to get started.
-      </p>
-      <div className="mt-4 flex flex-wrap gap-3">
-        <Link
-          href="/onboarding/context"
-          className="inline-flex items-center rounded-xl bg-accent px-4 py-2 text-sm font-medium text-white"
-          data-testid="home-cta-get-started"
-        >
-          Get started
-        </Link>
-        <Link
-          href="/week/plan"
-          className="inline-flex items-center rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-text"
-        >
-          Plan a week
-        </Link>
+    <section
+      data-testid="welcome-screen"
+      className="flex min-h-[60vh] flex-col items-center justify-center gap-6 px-4 text-center"
+    >
+      <div
+        aria-hidden
+        className="flex h-20 w-20 items-center justify-center rounded-2xl bg-accent text-3xl font-semibold text-white shadow-sm"
+      >
+        生
       </div>
+      <h1 className="font-serif text-5xl font-semibold tracking-tight text-text">
+        Ikigai
+      </h1>
+      <p className="max-w-xl text-base text-mutedText">
+        A quiet space to notice how you spend your time, and whether it aligns
+        with what matters to you.
+      </p>
+      <Link
+        href="/onboarding/context"
+        className="inline-flex items-center gap-2 rounded-xl bg-accent px-6 py-3 text-base font-medium text-white shadow-sm transition-opacity hover:opacity-90"
+        data-testid="home-cta-get-started"
+      >
+        Begin <span aria-hidden>→</span>
+      </Link>
+      <p className="pt-4 text-xs text-mutedText">
+        Not a productivity tool. A self-alignment mirror.
+      </p>
     </section>
   );
 }
