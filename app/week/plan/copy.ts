@@ -18,8 +18,6 @@ export const PLAN_COPY = {
   planningLeftLabel: 'Planning time left',
   planningLeftNote: 'Based on your baseline settings and this week’s tasks.',
   emptyTaskHint: 'Start with one thing you already know you’ll do.',
-  plotHint: 'The shape will settle as you add a few tasks.',
-  plotNote: 'It’s a sketch of your week, not a score.',
   summaryTitle: 'Domains are just containers for this week.',
   summaryNote: 'Tasks give the plot its shape.',
   domainHint: 'Domains are just containers for this week.',
@@ -46,5 +44,4 @@ export const PLAN_COPY = {
   domainAssignHelper: 'Domains help group your time. You can change this anytime.',
   hoursAria: 'Planned hours',
   plotHeader: 'What this week looks like so far',
-  plotSubtext: 'This is a soft sketch, not a score.',
 };

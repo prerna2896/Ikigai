@@ -105,7 +105,8 @@ test('reset this week clears the plan and starts fresh', async ({ page }) => {
   page.once('dialog', (dialog) => {
     void dialog.accept();
   });
-  await page.getByTestId('reset-week').click();
+  await page.getByTestId('plan-actions-toggle').click();
+  await page.getByTestId('plan-action-reset').click();
 
   // Tasks are wiped after reset.
   await expect(page.getByTestId('task-row')).toHaveCount(0);
@@ -127,7 +128,8 @@ test('reset this week is cancelable', async ({ page }) => {
   page.once('dialog', (dialog) => {
     void dialog.dismiss();
   });
-  await page.getByTestId('reset-week').click();
+  await page.getByTestId('plan-actions-toggle').click();
+  await page.getByTestId('plan-action-reset').click();
 
   // Dismissing the confirm dialog leaves the plan untouched.
   await expect(page.getByTestId('task-row')).toHaveCount(1);
