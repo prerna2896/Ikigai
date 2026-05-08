@@ -26,7 +26,11 @@ test('onboarding flow follows required navigation rules', async ({ page }) => {
   await expect(page.getByTestId('top-nav-home')).toBeVisible();
   await expect(page.getByTestId('onboarding-back')).toBeVisible();
   await expect(page.getByTestId('onboarding-next')).toBeVisible();
-  await page.getByTestId('onboarding-next').click();
+  await expect(page.getByTestId('reflection-question-counter')).toBeVisible();
+  for (let step = 0; step < 10; step += 1) {
+    await page.getByTestId('onboarding-next').click();
+    if (page.url().includes('/onboarding/settings')) break;
+  }
 
   await expect(page).toHaveURL(/onboarding\/settings/);
   await expect(page.getByTestId('top-nav-home')).toBeVisible();

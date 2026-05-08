@@ -15,6 +15,10 @@ export default function OnboardingReflectionPage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<string | null>(null);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const totalQuestions = reflectionQuestions.length;
+  const currentQuestion = reflectionQuestions[currentIndex];
+  const isLast = currentIndex === totalQuestions - 1;
 
   useEffect(() => {
     try {
@@ -49,7 +53,7 @@ export default function OnboardingReflectionPage() {
     }));
   };
 
-  const handleContinue = async () => {
+  const persistAndContinue = async () => {
     if (!repository || !profile) {
       return;
     }
@@ -67,6 +71,22 @@ export default function OnboardingReflectionPage() {
     router.replace('/onboarding/settings');
   };
 
+  const handleNext = () => {
+    if (isLast) {
+      void persistAndContinue();
+      return;
+    }
+    setCurrentIndex((index) => Math.min(index + 1, totalQuestions - 1));
+  };
+
+  const handleBack = () => {
+    if (currentIndex === 0) {
+      router.replace('/onboarding/tone');
+      return;
+    }
+    setCurrentIndex((index) => Math.max(index - 1, 0));
+  };
+
   return (
     <main
       className="mx-auto flex min-h-screen max-w-3xl flex-col gap-8 px-6 py-12"
@@ -80,6 +100,12 @@ export default function OnboardingReflectionPage() {
         <p className="text-sm text-mutedText">
           There are no right answers here. Short responses are enough.
         </p>
+        <p
+          className="text-xs text-mutedText"
+          data-testid="reflection-question-counter"
+        >
+          Question {currentIndex + 1} of {totalQuestions}
+        </p>
         {status ? (
           <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
             {status}
@@ -87,48 +113,53 @@ export default function OnboardingReflectionPage() {
         ) : null}
       </header>
 
-      <section className="rounded-2xl border border-slate-200 bg-surface p-6 shadow-sm">
-        <div className="flex flex-col gap-6">
-          {reflectionQuestions.map((question) => (
-            <div key={question.id} className="flex flex-col gap-2">
-              <label className="text-sm font-medium text-text">
-                {question.prompt}
-              </label>
-              {question.helper ? (
-                <p className="text-xs text-mutedText">{question.helper}</p>
-              ) : null}
-              {question.type === 'text' ? (
-                <textarea
-                  className="min-h-[80px] rounded-xl border border-slate-200 px-3 py-2 text-sm text-text"
-                  value={answers[question.id] ?? ''}
-                  onChange={(event) =>
-                    handleAnswerChange(question.id, event.target.value)
-                  }
-                  placeholder="A short note is fine"
-                  data-testid={`reflection-input-${question.id}`}
-                />
-              ) : (
-                <div className="flex flex-col gap-2">
-                  {question.options?.map((option) => (
-                    <label
-                      key={option}
-                      className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-text"
-                    >
-                      <input
-                        type="radio"
-                        name={question.id}
-                        value={option}
-                        checked={answers[question.id] === option}
-                        onChange={() => handleAnswerChange(question.id, option)}
-                        data-testid={`reflection-option-${question.id}-${option}`}
-                      />
-                      {option}
-                    </label>
-                  ))}
-                </div>
-              )}
+      <section
+        className="rounded-2xl border border-slate-200 bg-surface p-6 shadow-sm"
+        data-testid={`reflection-question-${currentQuestion.id}`}
+      >
+        <div className="flex flex-col gap-3">
+          <label className="font-serif text-xl text-text">
+            {currentQuestion.prompt}
+          </label>
+          {currentQuestion.helper ? (
+            <p className="text-xs text-mutedText">{currentQuestion.helper}</p>
+          ) : null}
+          {currentQuestion.type === 'text' ? (
+            <textarea
+              className="min-h-[80px] rounded-xl border border-slate-200 px-3 py-2 text-sm text-text"
+              value={answers[currentQuestion.id] ?? ''}
+              onChange={(event) =>
+                handleAnswerChange(currentQuestion.id, event.target.value)
+              }
+              placeholder="A short note is fine"
+              data-testid={`reflection-input-${currentQuestion.id}`}
+              autoFocus
+            />
+          ) : (
+            <div className="flex flex-col gap-2">
+              {currentQuestion.options?.map((option) => {
+                const selected = answers[currentQuestion.id] === option;
+                return (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() =>
+                      handleAnswerChange(currentQuestion.id, option)
+                    }
+                    aria-pressed={selected}
+                    data-testid={`reflection-option-${currentQuestion.id}-${option}`}
+                    className={`min-h-11 rounded-xl border px-4 py-2 text-left text-sm font-medium transition-colors ${
+                      selected
+                        ? 'border-accent bg-accent text-white'
+                        : 'border-slate-200 bg-white text-text hover:border-slate-300'
+                    }`}
+                  >
+                    {option}
+                  </button>
+                );
+              })}
             </div>
-          ))}
+          )}
         </div>
       </section>
 
@@ -136,19 +167,19 @@ export default function OnboardingReflectionPage() {
         <button
           type="button"
           className="rounded-full border border-slate-300 px-4 py-2 text-text"
-          onClick={() => router.replace('/onboarding/tone')}
+          onClick={handleBack}
           data-testid="onboarding-back"
         >
-          Back
+          ← Back
         </button>
         <button
           type="button"
-          className="rounded-full bg-accent px-5 py-2 font-medium text-white"
-          onClick={() => void handleContinue()}
+          className="inline-flex items-center gap-2 rounded-full bg-accent px-5 py-2 font-medium text-white"
+          onClick={handleNext}
           disabled={!repository || !profile}
           data-testid="onboarding-next"
         >
-          Continue
+          {isLast ? 'Continue' : 'Next'} <span aria-hidden>→</span>
         </button>
       </footer>
     </main>

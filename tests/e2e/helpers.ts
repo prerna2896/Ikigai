@@ -24,15 +24,15 @@ export const completeOnboarding = async (page: Page) => {
   await page.getByTestId('onboarding-next').click();
 
   await expect(page).toHaveURL(/onboarding\/reflection/);
-  const firstText = page.locator('[data-testid^="reflection-input-"]').first();
-  if (await firstText.isVisible()) {
-    await firstText.fill('Noted.');
+  for (let step = 0; step < 10; step += 1) {
+    if (page.url().includes('/onboarding/settings')) break;
+    const textInput = page.locator('[data-testid^="reflection-input-"]').first();
+    if (await textInput.count()) {
+      await textInput.fill('Noted.');
+    }
+    await page.getByTestId('onboarding-next').click();
+    await page.waitForLoadState('networkidle').catch(() => undefined);
   }
-  const firstOption = page.locator('[data-testid^="reflection-option-"]').first();
-  if (await firstOption.isVisible()) {
-    await firstOption.click();
-  }
-  await page.getByTestId('onboarding-next').click();
 
   await expect(page).toHaveURL(/onboarding\/settings/);
   for (let index = 0; index < 5; index += 1) {
