@@ -77,6 +77,30 @@ export const addTask = async (
 };
 
 export const selectPlotSegment = async (page: Page, index = 0) => {
-  await page.getByTestId(`plot-segment-${index}`).click();
+  // The Crystal chart now delegates hit-testing to a single math-
+  // based hit-disc rather than per-wedge SVG paths, so the wedge
+  // <g> is pointer-events: none and Playwright can't click it
+  // directly. If the segment exposes data-mid-angle-rad we dispatch
+  // via the wedge's mid-point in viewport coordinates; otherwise
+  // (Ikigai principles plot, IkigaiWheelPlot fallback) the testid
+  // click still works.
+  const segment = page.getByTestId(`plot-segment-${index}`);
+  const midAngle = await segment.getAttribute('data-mid-angle-rad');
+  if (midAngle !== null) {
+    const svg = page.getByTestId('week-plot').locator('svg').first();
+    await svg.scrollIntoViewIfNeeded();
+    const box = await svg.boundingBox();
+    if (!box) throw new Error('No svg bounding box');
+    const cx = box.x + box.width / 2;
+    const cy = box.y + box.height / 2;
+    const r = Math.min(box.width, box.height) * 0.22;
+    const angle = Number(midAngle);
+    await page.mouse.click(
+      cx + Math.cos(angle) * r,
+      cy + Math.sin(angle) * r,
+    );
+  } else {
+    await segment.click();
+  }
   await expect(page.getByTestId('selected-segment-panel')).toBeVisible();
 };

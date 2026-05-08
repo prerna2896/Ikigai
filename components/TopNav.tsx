@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { getLocalRepository } from '@ikigai/storage';
+import ThemePicker from './ThemePicker';
 
 const tabs = [
   { label: 'Plan', href: '/week/plan', testId: 'home-tab-planning' },
@@ -85,14 +86,17 @@ export default function TopNav() {
             })}
           </nav>
         )}
-        <Link
-          href="/profile"
-          aria-label="Profile"
-          data-testid="home-tab-profile"
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-accent text-xs font-semibold tracking-wide text-white shadow-sm transition-opacity hover:opacity-90"
-        >
-          {initials}
-        </Link>
+        <div className="flex items-center gap-2">
+          <ThemePicker />
+          <Link
+            href="/profile"
+            aria-label="Profile"
+            data-testid="home-tab-profile"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-accent text-xs font-semibold tracking-wide text-white shadow-sm transition-opacity hover:opacity-90"
+          >
+            {initials}
+          </Link>
+        </div>
       </div>
     </header>
   );

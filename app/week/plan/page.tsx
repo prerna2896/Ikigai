@@ -1,8 +1,13 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { DomainTask, Settings, WeekPlan } from '@ikigai/core';
+import type {
+  DomainTask,
+  Settings,
+  WeekLogEntry,
+  WeekPlan,
+} from '@ikigai/core';
 import {
   computeWeeklyCapacity,
   getBufferPercentForStrictness,
@@ -11,8 +16,15 @@ import {
 } from '@ikigai/core';
 import { getLocalRepository } from '@ikigai/storage';
 import CapacityCard from '../../../components/CapacityCard';
+import PlanActionsMenu from '../../../components/PlanActionsMenu';
 import WeekGoals from '../../../components/WeekGoals';
+// Old domain-wheel plot. Kept around but hidden — Crystal is the new
+// default. Toggle USE_CRYSTAL_PLOT to false to bring it back.
 import IkigaiWheelPlot from '../../../components/IkigaiWheelPlot';
+import { CrystalIkigai } from '../../../components/CrystalIkigai';
+import { useTheme } from '../../../components/ThemeProvider';
+
+const USE_CRYSTAL_PLOT = true;
 import IkigaiPrinciplesPlot, {
   getPrincipleForDomain,
   type IkigaiPrincipleId,
@@ -61,8 +73,19 @@ const makeNewDomainName = (plan: WeekPlan) => {
 
 const normalizeTitle = (value: string) => value.trim().toLowerCase();
 
+const sumTaskHours = (logs: WeekLogEntry[]): Record<string, number> => {
+  const totals: Record<string, number> = {};
+  logs.forEach((log) => {
+    Object.entries(log.taskHours).forEach(([taskId, hours]) => {
+      totals[taskId] = (totals[taskId] || 0) + hours;
+    });
+  });
+  return totals;
+};
+
 export default function WeekPlanPage() {
   const router = useRouter();
+  const { theme } = useTheme();
   const [repository, setRepository] = useState<ReturnType<
     typeof getLocalRepository
   > | null>(null);
@@ -70,6 +93,9 @@ export default function WeekPlanPage() {
   const [weekPlan, setWeekPlan] = useState<WeekPlan | null>(null);
   const [lastWeekPlan, setLastWeekPlan] = useState<WeekPlan | null>(null);
   const [lastWeekTotals, setLastWeekTotals] = useState<Record<string, number>>({});
+  const [currentWeekTotals, setCurrentWeekTotals] = useState<
+    Record<string, number>
+  >({});
   const [status, setStatus] = useState<string | null>(null);
   const [taskTitle, setTaskTitle] = useState('');
   const [taskHours, setTaskHours] = useState('1');
@@ -81,6 +107,26 @@ export default function WeekPlanPage() {
   const [plotMode, setPlotMode] = useState<'domains' | 'ikigai'>('domains');
   const [selectedPrincipleId, setSelectedPrincipleId] =
     useState<IkigaiPrincipleId | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+
+  // When the user clicks a chart segment (or principle), nudge the
+  // newly-opened details panel into view *only if it isn't already
+  // visible*. block: 'nearest' scrolls the minimum amount needed,
+  // which keeps the chart on-screen instead of pushing it off the
+  // top of the viewport.
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    if (!selectedDomainId && !selectedPrincipleId) return;
+    const node = panelRef.current;
+    if (!node) return;
+    const prefersReduced =
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    node.scrollIntoView({
+      behavior: prefersReduced ? 'auto' : 'smooth',
+      block: 'nearest',
+    });
+  }, [sidebarOpen, selectedDomainId, selectedPrincipleId]);
 
   useEffect(() => {
     try {
@@ -137,17 +183,13 @@ export default function WeekPlanPage() {
             setWeekPlan(derived);
             setSelectedDomainId(null);
             setSidebarOpen(false);
+            const currentLogs = await repo.getWeekLogs(derived.id);
+            setCurrentWeekTotals(sumTaskHours(currentLogs));
             if (previousPlan) {
               const derivedPrevious = withDerivedPlannedHours(previousPlan);
               setLastWeekPlan(derivedPrevious);
               const previousLogs = await repo.getWeekLogs(previousPlan.id);
-              const totals: Record<string, number> = {};
-              previousLogs.forEach((log) => {
-                Object.entries(log.taskHours).forEach(([taskId, hours]) => {
-                  totals[taskId] = (totals[taskId] || 0) + hours;
-                });
-              });
-              setLastWeekTotals(totals);
+              setLastWeekTotals(sumTaskHours(previousLogs));
             } else {
               setLastWeekPlan(null);
               setLastWeekTotals({});
@@ -165,17 +207,12 @@ export default function WeekPlanPage() {
           setWeekPlan(derived);
           setSelectedDomainId(null);
           setSidebarOpen(false);
+          setCurrentWeekTotals({});
           if (previousPlan) {
             const derivedPrevious = withDerivedPlannedHours(previousPlan);
             setLastWeekPlan(derivedPrevious);
             const previousLogs = await repo.getWeekLogs(previousPlan.id);
-            const totals: Record<string, number> = {};
-            previousLogs.forEach((log) => {
-              Object.entries(log.taskHours).forEach(([taskId, hours]) => {
-                totals[taskId] = (totals[taskId] || 0) + hours;
-              });
-            });
-            setLastWeekTotals(totals);
+            setLastWeekTotals(sumTaskHours(previousLogs));
           } else {
             setLastWeekPlan(null);
             setLastWeekTotals({});
@@ -359,7 +396,6 @@ export default function WeekPlanPage() {
     updatedPlan = { ...updatedPlan, domains };
 
     await persistPlan(updatedPlan);
-    setSelectedDomainId(targetDomainId);
   };
 
   const handleAddTask = async () => {
@@ -502,6 +538,29 @@ export default function WeekPlanPage() {
   );
 
   const planningComplete = Boolean(weekPlan?.isFrozen);
+
+  const crystalDomains = useMemo(() => {
+    if (!weekPlan) {
+      return [] as {
+        id: string;
+        name: string;
+        target: number;
+        completed: number;
+      }[];
+    }
+    return weekPlan.domains.map((domain) => {
+      const completed = domain.tasks.reduce(
+        (sum, task) => sum + (currentWeekTotals[task.id] || 0),
+        0,
+      );
+      return {
+        id: domain.id,
+        name: domain.name,
+        target: domain.plannedHours || 0,
+        completed,
+      };
+    });
+  }, [weekPlan, currentWeekTotals]);
 
   const getDomainIdByName = (name: string) =>
     weekPlan?.domains.find(
@@ -646,28 +705,11 @@ export default function WeekPlanPage() {
             </p>
           </div>
           {weekPlan ? (
-            <button
-              type="button"
-              onClick={() => void handleResetWeek()}
-              data-testid="reset-week"
-              title="Reset this week"
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-slate-300 px-3 py-1.5 text-xs font-medium text-mutedText transition-colors hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700 focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2"
-            >
-              <svg
-                viewBox="0 0 16 16"
-                aria-hidden
-                className="h-3.5 w-3.5"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.6"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M2.5 8a5.5 5.5 0 1 0 1.7-3.95" />
-                <path d="M2.5 3v3h3" />
-              </svg>
-              Reset week
-            </button>
+            <PlanActionsMenu
+              canUpdate={planningComplete}
+              onUpdate={handleReopenPlanning}
+              onReset={() => void handleResetWeek()}
+            />
           ) : null}
         </div>
         {status ? (
@@ -1019,7 +1061,6 @@ export default function WeekPlanPage() {
                 <h2 className="text-lg font-semibold text-text">
                   {PLAN_COPY.plotHeader}
                 </h2>
-                <p className="text-sm text-mutedText">{PLAN_COPY.plotSubtext}</p>
               </div>
               <div className="flex flex-col items-end gap-2">
                 {plotToggle}
@@ -1028,37 +1069,45 @@ export default function WeekPlanPage() {
                     Domains roll up into Energy, Growth, Contribution, Alignment.
                   </p>
                 ) : null}
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-2 rounded-full border border-slate-300 px-3 py-1 text-xs text-text"
-                  onClick={handleReopenPlanning}
-                >
-                  ↺ Update plan
-                </button>
               </div>
             </div>
             <div className="flex flex-col items-center gap-4">
               {weekPlan ? (
                 <div data-testid="week-plot">
                   {plotMode === 'domains' ? (
-                    <IkigaiWheelPlot
-                      domains={weekPlan.domains}
-                      activeDomainId={selectedDomainId}
-                      showSkeleton={!hasTasks}
-                      onSelectDomain={(domainId) => {
-                        setSelectedPrincipleId(null);
-                        setSelectedDomainId(domainId);
-                        setSidebarOpen(true);
-                      }}
-                    />
+                    USE_CRYSTAL_PLOT ? (
+                      <CrystalIkigai
+                        variant={theme}
+                        domains={crystalDomains}
+                        activeDomainId={selectedDomainId}
+                        showSkeleton={!hasTasks}
+                        onSelectDomain={(domainId) => {
+                          setSelectedPrincipleId(null);
+                          setSelectedDomainId(domainId);
+                          setSidebarOpen(domainId !== null);
+                        }}
+                      />
+                    ) : (
+                      <IkigaiWheelPlot
+                        domains={weekPlan.domains}
+                        activeDomainId={selectedDomainId}
+                        showSkeleton={!hasTasks}
+                        onSelectDomain={(domainId) => {
+                          setSelectedPrincipleId(null);
+                          setSelectedDomainId(domainId);
+                          setSidebarOpen(true);
+                        }}
+                      />
+                    )
                   ) : (
                     <IkigaiPrinciplesPlot
                       domains={weekPlan.domains}
+                      taskCompletedHours={currentWeekTotals}
                       activePrincipleId={selectedPrincipleId}
                       onSelectPrinciple={(principleId) => {
                         setSelectedDomainId(null);
                         setSelectedPrincipleId(principleId);
-                        setSidebarOpen(true);
+                        setSidebarOpen(principleId !== null);
                       }}
                     />
                   )}
@@ -1078,14 +1127,13 @@ export default function WeekPlanPage() {
                     : PLAN_COPY.renameHint}
                 </p>
               </div>
-              <p className="text-xs text-mutedText">{PLAN_COPY.plotHint}</p>
-              <p className="text-xs text-mutedText">{PLAN_COPY.plotNote}</p>
               {weekPlan && weekPlan.domains.length >= 7 ? (
                 <span className="text-xs text-mutedText">{PLAN_COPY.maxDomains}</span>
               ) : null}
               {sidebarOpen ? (
                 <div
-                  className="w-full rounded-2xl border border-slate-200 bg-white p-4"
+                  ref={panelRef}
+                  className="w-full scroll-mt-6 rounded-2xl border border-slate-200 bg-white p-4"
                   data-testid="selected-segment-panel"
                 >
                   <div className="flex items-center justify-between">
@@ -1219,7 +1267,6 @@ export default function WeekPlanPage() {
             <div className="space-y-4">
               <div>
                 <h2 className="text-lg font-semibold text-text">{PLAN_COPY.plotHeader}</h2>
-                <p className="text-sm text-mutedText">{PLAN_COPY.plotSubtext}</p>
               </div>
               {plotToggle}
               {plotMode === 'ikigai' ? (
@@ -1231,24 +1278,39 @@ export default function WeekPlanPage() {
                 {weekPlan ? (
                   <div data-testid="week-plot">
                     {plotMode === 'domains' ? (
-                      <IkigaiWheelPlot
-                        domains={weekPlan.domains}
-                        activeDomainId={selectedDomainId}
-                        showSkeleton={!hasTasks}
-                        onSelectDomain={(domainId) => {
-                          setSelectedPrincipleId(null);
-                          setSelectedDomainId(domainId);
-                          setSidebarOpen(true);
-                        }}
-                      />
+                      USE_CRYSTAL_PLOT ? (
+                        <CrystalIkigai
+                          variant={theme}
+                          domains={crystalDomains}
+                          activeDomainId={selectedDomainId}
+                          showSkeleton={!hasTasks}
+                          onSelectDomain={(domainId) => {
+                            setSelectedPrincipleId(null);
+                            setSelectedDomainId(domainId);
+                            setSidebarOpen(domainId !== null);
+                          }}
+                        />
+                      ) : (
+                        <IkigaiWheelPlot
+                          domains={weekPlan.domains}
+                          activeDomainId={selectedDomainId}
+                          showSkeleton={!hasTasks}
+                          onSelectDomain={(domainId) => {
+                            setSelectedPrincipleId(null);
+                            setSelectedDomainId(domainId);
+                            setSidebarOpen(true);
+                          }}
+                        />
+                      )
                     ) : (
                       <IkigaiPrinciplesPlot
                         domains={weekPlan.domains}
+                        taskCompletedHours={currentWeekTotals}
                         activePrincipleId={selectedPrincipleId}
                         onSelectPrinciple={(principleId) => {
                           setSelectedDomainId(null);
                           setSelectedPrincipleId(principleId);
-                          setSidebarOpen(true);
+                          setSidebarOpen(principleId !== null);
                         }}
                       />
                     )}
@@ -1268,8 +1330,6 @@ export default function WeekPlanPage() {
                       : PLAN_COPY.renameHint}
                   </p>
                 </div>
-                <p className="text-xs text-mutedText">{PLAN_COPY.plotHint}</p>
-                <p className="text-xs text-mutedText">{PLAN_COPY.plotNote}</p>
                 <div className="flex items-center gap-3">
                   <button
                     type="button"
@@ -1286,7 +1346,8 @@ export default function WeekPlanPage() {
                 </div>
                 {sidebarOpen ? (
                   <div
-                    className="w-full rounded-2xl border border-slate-200 bg-white p-4"
+                    ref={panelRef}
+                    className="w-full scroll-mt-6 rounded-2xl border border-slate-200 bg-white p-4"
                     data-testid="selected-segment-panel"
                   >
                     <div className="flex items-center justify-between">

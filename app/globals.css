@@ -2,14 +2,60 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
+/* Default — current theme. Each theme overrides the same variables on a
+   data-theme attribute, so flipping the attribute on <html> repaints the
+   whole app without any per-component plumbing. */
+:root,
+[data-theme='current'] {
   color-scheme: light;
   --bg: #f6f5f2;
+  --bg-rgb: 246 245 242;
   --surface: #ffffff;
   --text: #1f2937;
   --mutedText: #6b7280;
   --accent: #5f7f7b;
   --accentSoft: #e6efee;
+  --border: #e5e7eb;
+  --border-strong: #d1d5db;
+}
+
+[data-theme='aurora'] {
+  color-scheme: dark;
+  --bg: #0a0e1a;
+  --bg-rgb: 10 14 26;
+  --surface: #131826;
+  --text: #e6edf5;
+  --mutedText: #8a96aa;
+  --accent: #5eead4;
+  --accentSoft: rgba(94, 234, 212, 0.14);
+  --border: #1d2436;
+  --border-strong: #2b344a;
+}
+
+[data-theme='sunset'] {
+  color-scheme: light;
+  --bg: #fdf5ed;
+  --bg-rgb: 253 245 237;
+  --surface: #ffffff;
+  --text: #2a1d12;
+  --mutedText: #8b7355;
+  --accent: #e07a3c;
+  --accentSoft: rgba(224, 122, 60, 0.12);
+  --border: #ecdfd0;
+  --border-strong: #d8c6b1;
+}
+
+[data-theme='ocean'] {
+  color-scheme: light;
+  --bg: #f1f7fb;
+  --bg-rgb: 241 247 251;
+  --surface: #ffffff;
+  --text: #0f2536;
+  --mutedText: #5d7184;
+  --accent: #1f7da6;
+  --accentSoft: rgba(31, 125, 166, 0.12);
+  --border: #dde7ee;
+  --border-strong: #b9c9d5;
 }
 
 body {
@@ -24,11 +70,19 @@ body {
 }
 
 .bg-bg\/85 {
-  background-color: rgb(246 245 242 / 0.85);
+  background-color: rgb(var(--bg-rgb) / 0.85);
 }
 
 .bg-bg\/70 {
-  background-color: rgb(246 245 242 / 0.7);
+  background-color: rgb(var(--bg-rgb) / 0.7);
+}
+
+.bg-bg\/60 {
+  background-color: rgb(var(--bg-rgb) / 0.6);
+}
+
+.bg-bg\/40 {
+  background-color: rgb(var(--bg-rgb) / 0.4);
 }
 
 .bg-surface {
@@ -49,4 +103,12 @@ body {
 
 .text-mutedText {
   color: var(--mutedText);
+}
+
+.border-themed {
+  border-color: var(--border);
+}
+
+.border-themed-strong {
+  border-color: var(--border-strong);
 }
