@@ -196,7 +196,7 @@ function OnboardingSettingsContent() {
       </header>
 
       <section className="rounded-2xl border border-slate-200 bg-surface p-6 shadow-sm">
-        {activeStep.id === 'weekly_capacity' ? (
+        {activeStep.id === 'weekly_structure' ? (
           <div className="flex flex-col gap-6">
             <div className="flex flex-col gap-3">
               <p className="text-sm text-mutedText">
@@ -246,6 +246,11 @@ function OnboardingSettingsContent() {
               </select>
               <span className="text-xs text-mutedText">Weeks reset at 12:00 AM.</span>
             </label>
+          </div>
+        ) : null}
+
+        {activeStep.id === 'weekly_capacity' ? (
+          <div className="flex flex-col gap-6">
             <label className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-text">
               <div className="flex items-center gap-3">
                 <input

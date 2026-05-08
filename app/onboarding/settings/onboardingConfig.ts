@@ -1,4 +1,8 @@
-export type SettingsStepId = 'commitments' | 'daily_baselines' | 'weekly_capacity';
+export type SettingsStepId =
+  | 'commitments'
+  | 'daily_baselines'
+  | 'weekly_structure'
+  | 'weekly_capacity';
 
 export type SettingsStepConfig = {
   id: SettingsStepId;
@@ -18,8 +22,13 @@ export const settingsSteps: SettingsStepConfig[] = [
     helper: "These aren't goals. They're just reality.",
   },
   {
+    id: 'weekly_structure',
+    title: 'How structured should planning feel?',
+    helper: 'We’ll keep some buffer aside based on this.',
+  },
+  {
     id: 'weekly_capacity',
     title: 'How full do you want your week to feel?',
-    helper: 'This is a planning preference. A guess is enough.',
+    helper: 'A planning preference — a guess is enough.',
   },
 ];
