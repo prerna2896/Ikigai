@@ -65,6 +65,18 @@ body {
   color: var(--text);
 }
 
+/* Brand mark — show the dark-stroke variant on light themes and the
+   light-stroke variant under aurora (the only dark theme). */
+.brand-mark-dark {
+  display: none;
+}
+[data-theme='aurora'] .brand-mark-light {
+  display: none;
+}
+[data-theme='aurora'] .brand-mark-dark {
+  display: inline-block;
+}
+
 .bg-bg {
   background-color: var(--bg);
 }

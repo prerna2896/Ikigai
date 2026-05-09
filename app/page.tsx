@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import type { Profile, Settings, WeekPlan } from '@ikigai/core';
 import { getLocalRepository } from '@ikigai/storage';
@@ -220,12 +221,24 @@ function NoOnboarding() {
       data-testid="welcome-screen"
       className="flex min-h-[60vh] flex-col items-center justify-center gap-6 px-4 text-center"
     >
-      <div
+      <Image
+        src="/brand/mark-light.png"
+        alt=""
         aria-hidden
-        className="flex h-20 w-20 items-center justify-center rounded-2xl bg-accent text-3xl font-semibold text-white shadow-sm"
-      >
-        生
-      </div>
+        width={128}
+        height={128}
+        priority
+        className="brand-mark-light h-32 w-32"
+      />
+      <Image
+        src="/brand/mark-dark.png"
+        alt=""
+        aria-hidden
+        width={128}
+        height={128}
+        priority
+        className="brand-mark-dark h-32 w-32"
+      />
       <h1 className="font-serif text-5xl font-semibold tracking-tight text-text">
         Ikigai
       </h1>

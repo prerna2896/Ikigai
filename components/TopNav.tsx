@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, type ReactNode } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { getLocalRepository } from '@ikigai/storage';
@@ -63,6 +64,7 @@ const getInitials = (name: string | null | undefined) => {
 export default function TopNav() {
   const pathname = usePathname();
   const isOnboarding = pathname.startsWith('/onboarding');
+  const isHome = pathname === '/';
   const [initials, setInitials] = useState('·');
 
   useEffect(() => {
@@ -86,22 +88,38 @@ export default function TopNav() {
   return (
     <header className="sticky top-0 z-40 border-b border-slate-200/60 bg-bg/85 backdrop-blur supports-[backdrop-filter]:bg-bg/70">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-8 sm:py-4">
-        <Link
-          href="/"
-          data-testid="top-nav-home"
-          className="flex items-center gap-2 text-text"
-          aria-label="Ikigai home"
-        >
-          <span
-            aria-hidden
-            className="relative flex h-5 w-5 items-center justify-center rounded-full border-2 border-accent"
+        {isHome ? (
+          <span aria-hidden />
+        ) : (
+          <Link
+            href="/"
+            data-testid="top-nav-home"
+            className="flex items-center gap-2 text-text"
+            aria-label="Ikigai home"
           >
-            <span className="block h-1.5 w-1.5 rounded-full bg-accent" />
-          </span>
-          <span className="font-serif text-xl font-semibold tracking-tight">
-            Ikigai
-          </span>
-        </Link>
+            <Image
+              src="/brand/mark-light.png"
+              alt=""
+              aria-hidden
+              width={28}
+              height={28}
+              priority
+              className="brand-mark-light h-7 w-7"
+            />
+            <Image
+              src="/brand/mark-dark.png"
+              alt=""
+              aria-hidden
+              width={28}
+              height={28}
+              priority
+              className="brand-mark-dark h-7 w-7"
+            />
+            <span className="font-serif text-xl font-semibold tracking-tight">
+              Ikigai
+            </span>
+          </Link>
+        )}
         {isOnboarding ? null : (
           <nav
             aria-label="Primary"
