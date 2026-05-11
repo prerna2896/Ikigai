@@ -24,7 +24,7 @@ export const THEMES: Array<{
 ];
 
 const STORAGE_KEY = 'ikigai-theme';
-const DEFAULT_THEME: ThemeId = 'current';
+const DEFAULT_THEME: ThemeId = 'sunset';
 
 type ThemeContextValue = {
   theme: ThemeId;

@@ -149,15 +149,15 @@ export default function IkigaiPrinciplesPlot({
   // Pointer-down outside the chart wrapper clears the pinned principle.
   useEffect(() => {
     if (!onSelectPrinciple || !activePrincipleId) return;
-    const handle = (event: MouseEvent) => {
+    const handle = (event: PointerEvent) => {
       const node = wrapperRef.current;
       if (!node) return;
       const target = event.target;
       if (target instanceof Node && node.contains(target)) return;
       onSelectPrinciple(null);
     };
-    document.addEventListener('mousedown', handle);
-    return () => document.removeEventListener('mousedown', handle);
+    document.addEventListener('pointerdown', handle);
+    return () => document.removeEventListener('pointerdown', handle);
   }, [onSelectPrinciple, activePrincipleId]);
 
   const size = 540;

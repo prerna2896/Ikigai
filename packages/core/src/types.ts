@@ -75,7 +75,7 @@ export type ProfileReflection = {
 export type WeekDraft = {
   weekId: string; // e.g. "2026-W05"
   state: 'draft';
-  activeDomainIds: string[]; // max length 7
+  activeDomainIds: string[]; // max length 12
   weeklyCapacityMinutes: number;
   bufferPercent: number;
   sleepMinutesPerDay: number;
