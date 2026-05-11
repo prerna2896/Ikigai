@@ -4,6 +4,9 @@ import { useEffect, useMemo, useState } from 'react';
 import type { WeekLogEntry, WeekPlan } from '@ikigai/core';
 import { getLocalRepository } from '@ikigai/storage';
 import { addDomainToPlan, withDerivedPlannedHours } from '../app/week/plan/planUtils';
+import { CrystalIkigai } from './CrystalIkigai';
+import IkigaiPrinciplesPlot from './IkigaiPrinciplesPlot';
+import { useTheme } from './ThemeProvider';
 import WeekGoals from './WeekGoals';
 
 type LogFormState = Record<string, string>;
@@ -42,9 +45,11 @@ export default function LogPanel({
   onLogSaved,
   variant = 'standalone',
 }: LogPanelProps) {
+  const { theme } = useTheme();
   const [plan, setPlan] = useState<WeekPlan>(weekPlan);
   const [weekLogs, setWeekLogs] = useState<WeekLogEntry[]>([]);
   const [logForm, setLogForm] = useState<LogFormState>({});
+  const [plotMode, setPlotMode] = useState<'domains' | 'ikigai'>('domains');
   const [isSaving, setIsSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -111,6 +116,21 @@ export default function LogPanel({
     });
     return totals;
   }, [weekLogs]);
+
+  const crystalDomains = useMemo(
+    () =>
+      plan.domains.map((domain) => ({
+        id: domain.id,
+        name: domain.name,
+        target: domain.plannedHours || 0,
+        completed: domain.tasks.reduce(
+          (sum, task) => sum + (weekTotals[task.id] || 0),
+          0,
+        ),
+      })),
+    [plan, weekTotals],
+  );
+  const hasTasks = plan.domains.some((d) => d.tasks.length > 0);
 
   const lastLog = weekLogs[0] ?? null;
   const lastLogDate = lastLog
@@ -264,6 +284,51 @@ export default function LogPanel({
           onPlanChange?.(next);
         }}
       />
+
+      {hasTasks ? (
+        <div className="space-y-3" data-testid="log-plot">
+          <div className="flex items-center justify-center">
+            <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white p-1 text-xs text-mutedText">
+              <button
+                type="button"
+                className={`rounded-full px-3 py-1 text-xs font-medium ${
+                  plotMode === 'domains'
+                    ? 'bg-accent text-white'
+                    : 'text-mutedText'
+                }`}
+                onClick={() => setPlotMode('domains')}
+              >
+                Domains
+              </button>
+              <button
+                type="button"
+                className={`rounded-full px-3 py-1 text-xs font-medium ${
+                  plotMode === 'ikigai'
+                    ? 'bg-accent text-white'
+                    : 'text-mutedText'
+                }`}
+                onClick={() => setPlotMode('ikigai')}
+              >
+                Ikigai
+              </button>
+            </div>
+          </div>
+          <div className="mx-auto w-full max-w-[440px]">
+            {plotMode === 'domains' ? (
+              <CrystalIkigai
+                variant={theme}
+                domains={crystalDomains}
+                showSkeleton={!hasTasks}
+              />
+            ) : (
+              <IkigaiPrinciplesPlot
+                domains={plan.domains}
+                taskCompletedHours={weekTotals}
+              />
+            )}
+          </div>
+        </div>
+      ) : null}
 
       <div className="flex items-baseline justify-between gap-3">
         <div className="space-y-1">
