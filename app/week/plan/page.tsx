@@ -610,10 +610,13 @@ export default function WeekPlanPage() {
     }).estimatedPlanForHours;
   }, [settings]);
 
+  // Unclamped so overplanning surfaces as a negative number — e.g.
+  // "-12h of 134h" tells the user they're 12 hours past capacity.
   const planningHoursLeft =
     planningCapacityHours !== null
-      ? Math.max(0, planningCapacityHours - plannedTaskHours)
+      ? planningCapacityHours - plannedTaskHours
       : null;
+  const isOverplanned = planningHoursLeft !== null && planningHoursLeft < 0;
 
   const plotToggle = (
     <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white p-1 text-xs text-mutedText">
@@ -735,318 +738,6 @@ export default function WeekPlanPage() {
         />
       ) : null}
 
-      {!planningComplete ? (
-        <section className="rounded-2xl border border-slate-200 bg-surface p-6 shadow-sm">
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <h2 className="text-lg font-semibold text-text">{PLAN_COPY.promptTitle}</h2>
-            <p className="text-sm text-mutedText">{PLAN_COPY.promptNote}</p>
-          </div>
-          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_140px_120px]">
-            <label className="flex flex-col gap-2 text-sm text-mutedText">
-              {PLAN_COPY.taskLabel}
-              <input
-                type="text"
-                className="rounded-xl border border-slate-200 px-3 py-2 text-text"
-                placeholder={PLAN_COPY.taskPlaceholder}
-                value={taskTitle}
-                onChange={(event) => setTaskTitle(event.target.value)}
-                data-testid="task-title-input"
-              />
-            </label>
-            <label className="flex flex-col gap-2 text-sm text-mutedText">
-              {PLAN_COPY.hoursLabel}
-              <input
-                type="text"
-                inputMode="numeric"
-                className="rounded-xl border border-slate-200 px-3 py-2 text-text"
-                value={taskHours}
-                onChange={(event) => setTaskHours(formatHoursInput(event.target.value))}
-                onFocus={(event) => event.currentTarget.select()}
-                data-testid="task-hours-input"
-              />
-              <span className="text-xs text-mutedText">{PLAN_COPY.hoursHelper}</span>
-            </label>
-            <div className="flex items-end">
-              <button
-                type="button"
-                className="inline-flex w-full items-center justify-center rounded-xl bg-accent px-4 py-2 text-sm font-medium text-white"
-                onClick={() => void handleAddTask()}
-                data-testid="add-task-button"
-              >
-                {PLAN_COPY.addTask}
-              </button>
-            </div>
-          </div>
-
-          {settings ? (
-            <div className="space-y-2">
-              <p className="text-sm font-medium text-text">{PLAN_COPY.quickTasksTitle}</p>
-              <p className="text-xs text-mutedText">{PLAN_COPY.quickTasksNote}</p>
-              <div className="flex flex-wrap gap-2">
-                {maintenanceHours > 0 ? (
-                  <button
-                    type="button"
-                    className="rounded-full border border-slate-200 px-3 py-1 text-xs text-text"
-                    onClick={() =>
-                      void addTaskToPlan(
-                        PLAN_COPY.quickTaskMaintenance,
-                        maintenanceHours,
-                        getDomainIdByName('Home & Life'),
-                      )
-                    }
-                  >
-                    {PLAN_COPY.quickTaskMaintenance} · {maintenanceHours}h
-                  </button>
-                ) : null}
-                {commitmentsHours > 0 ? (
-                  <button
-                    type="button"
-                    className="rounded-full border border-slate-200 px-3 py-1 text-xs text-text"
-                    onClick={() =>
-                      void addTaskToPlan(
-                        commitmentsLabel,
-                        commitmentsHours,
-                        getDomainIdByName('Work / Study'),
-                      )
-                    }
-                  >
-                    {commitmentsLabel} · {commitmentsHours}h
-                  </button>
-                ) : null}
-                {sleepHours > 0 ? (
-                  <button
-                    type="button"
-                    className="rounded-full border border-slate-200 px-3 py-1 text-xs text-text"
-                    onClick={() =>
-                      void addTaskToPlan(
-                        PLAN_COPY.quickTaskSleep,
-                        sleepHours,
-                        getDomainIdByName('Rest & Recharge'),
-                      )
-                    }
-                  >
-                    {PLAN_COPY.quickTaskSleep} · {sleepHours}h
-                  </button>
-                ) : null}
-              </div>
-            </div>
-          ) : null}
-
-          <div className="space-y-3">
-            <div>
-              <p className="text-sm font-medium text-text">{PLAN_COPY.taskListTitle}</p>
-              <p className="text-xs text-mutedText">{PLAN_COPY.taskListNote}</p>
-            </div>
-            {planningHoursLeft !== null ? (
-              <div className="space-y-2" data-testid="task-list">
-                <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-mutedText">
-                  <span className="font-medium text-text">
-                    {PLAN_COPY.planningLeftLabel}:
-                  </span>
-                  <span>{Math.round(planningHoursLeft)}h</span>
-                  <span className="text-mutedText">
-                    of {Math.round(planningCapacityHours ?? 0)}h
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={Math.max(1, Math.round(planningCapacityHours ?? 0))}
-                  value={Math.min(
-                    Math.round(plannedTaskHours),
-                    Math.round(planningCapacityHours ?? 0),
-                  )}
-                  readOnly
-                  className="w-full accent-[var(--accent)]"
-                />
-                <div className="flex items-center justify-between text-xs text-mutedText">
-                  <span>0h</span>
-                  <span>{Math.round(planningCapacityHours ?? 0)}h</span>
-                </div>
-              </div>
-            ) : null}
-            {taskList.length === 0 ? (
-              <p className="text-sm text-mutedText">{PLAN_COPY.emptyTaskHint}</p>
-            ) : (
-              <div className="space-y-2">
-                {taskList.map(({ task, domain }) => (
-                  <div
-                    key={task.id}
-                    className="relative flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2"
-                    data-testid="task-row"
-                    data-task-id={task.id}
-                  >
-                    <input
-                      type="text"
-                      className="min-w-[180px] flex-1 text-sm text-text outline-none"
-                      value={task.title}
-                      onChange={(event) =>
-                        handleTaskFieldChange(domain.id, task.id, {
-                          title: event.target.value,
-                        })
-                      }
-                      onBlur={(event) =>
-                        handleTaskFieldChange(
-                          domain.id,
-                          task.id,
-                          { title: event.target.value.trim() },
-                          true,
-                        )
-                      }
-                      data-testid="task-row-title"
-                    />
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-sm text-text"
-                      value={String(task.plannedHours)}
-                      onChange={(event) =>
-                        handleTaskFieldChange(domain.id, task.id, {
-                          plannedHours: (() => {
-                            const cleaned = formatHoursInput(event.target.value);
-                            return cleaned === '' ? 0 : Number(cleaned);
-                          })(),
-                        })
-                      }
-                      onBlur={(event) =>
-                        handleTaskFieldChange(
-                          domain.id,
-                          task.id,
-                          {
-                            plannedHours: (() => {
-                              const cleaned = formatHoursInput(event.target.value);
-                              return cleaned === '' ? 0 : Number(cleaned);
-                            })(),
-                          },
-                          true,
-                        )
-                      }
-                      onFocus={(event) => event.currentTarget.select()}
-                      aria-label={PLAN_COPY.hoursAria}
-                      data-testid="task-row-hours"
-                    />
-                    <div className="relative">
-                      <button
-                        type="button"
-                        className="rounded-full border border-slate-200 px-3 py-1 text-xs text-mutedText"
-                        onClick={() =>
-                          setDomainPickerTaskId(
-                            domainPickerTaskId === task.id ? null : task.id,
-                          )
-                        }
-                        data-testid="task-row-domain"
-                      >
-                        {domain.name} ▾
-                      </button>
-                      {domainPickerTaskId === task.id ? (
-                        <div className="absolute right-0 top-9 z-10 w-52 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
-                          <p className="px-2 pb-1 text-xs uppercase tracking-[0.2em] text-mutedText">
-                            {PLAN_COPY.domainPickerLabel}
-                          </p>
-                          <div className="max-h-40 space-y-1 overflow-auto">
-                            {weekPlan?.domains.map((option) => (
-                              <button
-                                key={option.id}
-                                type="button"
-                                className={`flex w-full items-center justify-between rounded-lg px-2 py-1 text-xs ${
-                                  option.id === domain.id
-                                    ? 'bg-slate-100 text-text'
-                                    : 'text-mutedText hover:bg-slate-50'
-                                }`}
-                                onClick={() =>
-                                  void handleAssignTaskDomain(task.id, domain.id, option.id)
-                                }
-                                data-testid={`task-domain-option-${task.id}-${option.id}`}
-                              >
-                                {option.name}
-                                {option.id === domain.id ? '•' : null}
-                              </button>
-                            ))}
-                          </div>
-                          <div className="mt-2 border-t border-slate-100 pt-2">
-                            <p className="px-2 text-xs text-mutedText">{PLAN_COPY.createDomain}</p>
-                            <input
-                              type="text"
-                              className="mt-2 w-full rounded-lg border border-slate-200 px-2 py-1 text-xs text-text"
-                              value={newDomainName}
-                              placeholder={PLAN_COPY.domainOtherPlaceholder}
-                              onChange={(event) => setNewDomainName(event.target.value)}
-                            />
-                            <button
-                              type="button"
-                              className="mt-2 w-full rounded-lg border border-slate-200 px-2 py-1 text-xs text-text"
-                              onClick={() =>
-                                void handleCreateDomainForTask(task.id, domain.id)
-                              }
-                              disabled={!newDomainName.trim() || weekPlan?.domains.length === 7}
-                            >
-                              {PLAN_COPY.createDomain}
-                            </button>
-                            {weekPlan?.domains.length === 7 ? (
-                              <p className="mt-2 text-[11px] text-mutedText">
-                                {PLAN_COPY.domainLimitNote}
-                              </p>
-                            ) : null}
-                          </div>
-                        </div>
-                      ) : null}
-                    </div>
-                    <button
-                      type="button"
-                      className="ml-auto text-xs text-mutedText hover:text-text"
-                      onClick={() => handleRemoveTask(domain.id, task.id)}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-            <p className="text-xs text-mutedText">{PLAN_COPY.domainAssignHelper}</p>
-          </div>
-        </div>
-        {lastWeekPlan ? (
-          <aside className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-text">
-            <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
-              Last week
-            </p>
-            <p className="mt-2 text-sm font-medium text-text">
-              Tasks & completion
-            </p>
-            <p className="mt-1 text-xs text-mutedText">
-              A quick reference from the previous plan.
-            </p>
-            <div className="mt-4 space-y-3">
-              {lastWeekTasks.length === 0 ? (
-                <p className="text-xs text-mutedText">
-                  No tasks logged last week.
-                </p>
-              ) : (
-                lastWeekTasks.map((task) => (
-                  <div
-                    key={task.id}
-                    className="rounded-xl border border-slate-200 px-3 py-2"
-                  >
-                    <div className="flex items-center justify-between text-xs text-mutedText">
-                      <span className="font-medium text-text">{task.title}</span>
-                      <span>{task.domainName}</span>
-                    </div>
-                    <div className="mt-2 flex items-center justify-between text-xs text-mutedText">
-                      <span>{Math.round(task.plannedHours)}h planned</span>
-                      <span>{Math.round(task.completedHours)}h completed</span>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </aside>
-        ) : null}
-        </div>
-      </section>
-      ) : null}
-
       {planningComplete ? (
         <section className="rounded-2xl border border-slate-200 bg-surface p-6 shadow-sm">
           <div className="space-y-4">
@@ -1056,19 +747,17 @@ export default function WeekPlanPage() {
             >
               This week’s plan is frozen.
             </div>
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-lg font-semibold text-text">
-                  {PLAN_COPY.plotHeader}
-                </h2>
-              </div>
-              <div className="flex flex-col items-end gap-2">
-                {plotToggle}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-lg font-semibold text-text">
+                {PLAN_COPY.plotHeader}
+              </h2>
+              <div className="flex items-center gap-3">
                 {plotMode === 'ikigai' ? (
-                  <p className="text-xs text-mutedText">
+                  <span className="hidden text-xs text-mutedText sm:inline">
                     Domains roll up into Energy, Growth, Contribution, Alignment.
-                  </p>
+                  </span>
                 ) : null}
+                {plotToggle}
               </div>
             </div>
             <div className="flex flex-col items-center gap-4">
@@ -1265,15 +954,19 @@ export default function WeekPlanPage() {
         <section className="grid gap-6">
           <div className="rounded-2xl border border-slate-200 bg-surface p-6 shadow-sm">
             <div className="space-y-4">
-              <div>
-                <h2 className="text-lg font-semibold text-text">{PLAN_COPY.plotHeader}</h2>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-lg font-semibold text-text">
+                  {PLAN_COPY.plotHeader}
+                </h2>
+                <div className="flex items-center gap-3">
+                  {plotMode === 'ikigai' ? (
+                    <span className="hidden text-xs text-mutedText sm:inline">
+                      Domains roll up into Energy, Growth, Contribution, Alignment.
+                    </span>
+                  ) : null}
+                  {plotToggle}
+                </div>
               </div>
-              {plotToggle}
-              {plotMode === 'ikigai' ? (
-                <p className="text-xs text-mutedText">
-                  Domains roll up into Energy, Growth, Contribution, Alignment.
-                </p>
-              ) : null}
               <div className="flex flex-col items-center gap-4">
                 {weekPlan ? (
                   <div data-testid="week-plot">
@@ -1524,6 +1217,334 @@ export default function WeekPlanPage() {
           </div>
         </section>
       )}
+
+      {!planningComplete ? (
+        <section className="rounded-2xl border border-slate-200 bg-surface p-6 shadow-sm">
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <h2 className="text-lg font-semibold text-text">{PLAN_COPY.promptTitle}</h2>
+            <p className="text-sm text-mutedText">{PLAN_COPY.promptNote}</p>
+          </div>
+          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_140px_120px]">
+            <label className="flex flex-col gap-2 text-sm text-mutedText">
+              {PLAN_COPY.taskLabel}
+              <input
+                type="text"
+                className="rounded-xl border border-slate-200 px-3 py-2 text-text"
+                placeholder={PLAN_COPY.taskPlaceholder}
+                value={taskTitle}
+                onChange={(event) => setTaskTitle(event.target.value)}
+                data-testid="task-title-input"
+              />
+            </label>
+            <label className="flex flex-col gap-2 text-sm text-mutedText">
+              {PLAN_COPY.hoursLabel}
+              <input
+                type="text"
+                inputMode="numeric"
+                className="rounded-xl border border-slate-200 px-3 py-2 text-text"
+                value={taskHours}
+                onChange={(event) => setTaskHours(formatHoursInput(event.target.value))}
+                onFocus={(event) => event.currentTarget.select()}
+                data-testid="task-hours-input"
+              />
+              <span className="text-xs text-mutedText">{PLAN_COPY.hoursHelper}</span>
+            </label>
+            <div className="flex items-end">
+              <button
+                type="button"
+                className="inline-flex w-full items-center justify-center rounded-xl bg-accent px-4 py-2 text-sm font-medium text-white"
+                onClick={() => void handleAddTask()}
+                data-testid="add-task-button"
+              >
+                {PLAN_COPY.addTask}
+              </button>
+            </div>
+          </div>
+
+          {settings ? (
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-text">{PLAN_COPY.quickTasksTitle}</p>
+              <p className="text-xs text-mutedText">{PLAN_COPY.quickTasksNote}</p>
+              <div className="flex flex-wrap gap-2">
+                {maintenanceHours > 0 ? (
+                  <button
+                    type="button"
+                    className="rounded-full border border-slate-200 px-3 py-1 text-xs text-text"
+                    onClick={() =>
+                      void addTaskToPlan(
+                        PLAN_COPY.quickTaskMaintenance,
+                        maintenanceHours,
+                        getDomainIdByName('Home & Life'),
+                      )
+                    }
+                  >
+                    {PLAN_COPY.quickTaskMaintenance} · {maintenanceHours}h
+                  </button>
+                ) : null}
+                {commitmentsHours > 0 ? (
+                  <button
+                    type="button"
+                    className="rounded-full border border-slate-200 px-3 py-1 text-xs text-text"
+                    onClick={() =>
+                      void addTaskToPlan(
+                        commitmentsLabel,
+                        commitmentsHours,
+                        getDomainIdByName('Work / Study'),
+                      )
+                    }
+                  >
+                    {commitmentsLabel} · {commitmentsHours}h
+                  </button>
+                ) : null}
+                {sleepHours > 0 ? (
+                  <button
+                    type="button"
+                    className="rounded-full border border-slate-200 px-3 py-1 text-xs text-text"
+                    onClick={() =>
+                      void addTaskToPlan(
+                        PLAN_COPY.quickTaskSleep,
+                        sleepHours,
+                        getDomainIdByName('Rest & Recharge'),
+                      )
+                    }
+                  >
+                    {PLAN_COPY.quickTaskSleep} · {sleepHours}h
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
+          <div className="space-y-3">
+            <div>
+              <p className="text-sm font-medium text-text">{PLAN_COPY.taskListTitle}</p>
+              <p className="text-xs text-mutedText">{PLAN_COPY.taskListNote}</p>
+            </div>
+            {planningHoursLeft !== null ? (
+              <div className="space-y-2" data-testid="task-list">
+                <div
+                  className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs ${
+                    isOverplanned
+                      ? 'border-rose-300 bg-rose-50 text-rose-700'
+                      : 'border-slate-200 bg-white text-mutedText'
+                  }`}
+                  data-testid="planning-hours-left"
+                  data-overplanned={isOverplanned ? 'true' : 'false'}
+                >
+                  <span
+                    className={`font-medium ${
+                      isOverplanned ? 'text-rose-700' : 'text-text'
+                    }`}
+                  >
+                    {PLAN_COPY.planningLeftLabel}:
+                  </span>
+                  <span>{Math.round(planningHoursLeft)}h</span>
+                  <span
+                    className={
+                      isOverplanned ? 'text-rose-700/70' : 'text-mutedText'
+                    }
+                  >
+                    of {Math.round(planningCapacityHours ?? 0)}h
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={Math.max(1, Math.round(planningCapacityHours ?? 0))}
+                  value={Math.min(
+                    Math.round(plannedTaskHours),
+                    Math.round(planningCapacityHours ?? 0),
+                  )}
+                  readOnly
+                  className="w-full accent-[var(--accent)]"
+                />
+                <div className="flex items-center justify-between text-xs text-mutedText">
+                  <span>0h</span>
+                  <span>{Math.round(planningCapacityHours ?? 0)}h</span>
+                </div>
+              </div>
+            ) : null}
+            {taskList.length === 0 ? (
+              <p className="text-sm text-mutedText">{PLAN_COPY.emptyTaskHint}</p>
+            ) : (
+              <div className="space-y-2">
+                {taskList.map(({ task, domain }) => (
+                  <div
+                    key={task.id}
+                    className="relative flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2"
+                    data-testid="task-row"
+                    data-task-id={task.id}
+                  >
+                    <input
+                      type="text"
+                      className="min-w-[180px] flex-1 text-sm text-text outline-none"
+                      value={task.title}
+                      onChange={(event) =>
+                        handleTaskFieldChange(domain.id, task.id, {
+                          title: event.target.value,
+                        })
+                      }
+                      onBlur={(event) =>
+                        handleTaskFieldChange(
+                          domain.id,
+                          task.id,
+                          { title: event.target.value.trim() },
+                          true,
+                        )
+                      }
+                      data-testid="task-row-title"
+                    />
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-sm text-text"
+                      value={String(task.plannedHours)}
+                      onChange={(event) =>
+                        handleTaskFieldChange(domain.id, task.id, {
+                          plannedHours: (() => {
+                            const cleaned = formatHoursInput(event.target.value);
+                            return cleaned === '' ? 0 : Number(cleaned);
+                          })(),
+                        })
+                      }
+                      onBlur={(event) =>
+                        handleTaskFieldChange(
+                          domain.id,
+                          task.id,
+                          {
+                            plannedHours: (() => {
+                              const cleaned = formatHoursInput(event.target.value);
+                              return cleaned === '' ? 0 : Number(cleaned);
+                            })(),
+                          },
+                          true,
+                        )
+                      }
+                      onFocus={(event) => event.currentTarget.select()}
+                      aria-label={PLAN_COPY.hoursAria}
+                      data-testid="task-row-hours"
+                    />
+                    <div className="relative">
+                      <button
+                        type="button"
+                        className="rounded-full border border-slate-200 px-3 py-1 text-xs text-mutedText"
+                        onClick={() =>
+                          setDomainPickerTaskId(
+                            domainPickerTaskId === task.id ? null : task.id,
+                          )
+                        }
+                        data-testid="task-row-domain"
+                      >
+                        {domain.name} ▾
+                      </button>
+                      {domainPickerTaskId === task.id ? (
+                        <div className="absolute right-0 top-9 z-10 w-52 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
+                          <p className="px-2 pb-1 text-xs uppercase tracking-[0.2em] text-mutedText">
+                            {PLAN_COPY.domainPickerLabel}
+                          </p>
+                          <div className="max-h-40 space-y-1 overflow-auto">
+                            {weekPlan?.domains.map((option) => (
+                              <button
+                                key={option.id}
+                                type="button"
+                                className={`flex w-full items-center justify-between rounded-lg px-2 py-1 text-xs ${
+                                  option.id === domain.id
+                                    ? 'bg-slate-100 text-text'
+                                    : 'text-mutedText hover:bg-slate-50'
+                                }`}
+                                onClick={() =>
+                                  void handleAssignTaskDomain(task.id, domain.id, option.id)
+                                }
+                                data-testid={`task-domain-option-${task.id}-${option.id}`}
+                              >
+                                {option.name}
+                                {option.id === domain.id ? '•' : null}
+                              </button>
+                            ))}
+                          </div>
+                          <div className="mt-2 border-t border-slate-100 pt-2">
+                            <p className="px-2 text-xs text-mutedText">{PLAN_COPY.createDomain}</p>
+                            <input
+                              type="text"
+                              className="mt-2 w-full rounded-lg border border-slate-200 px-2 py-1 text-xs text-text"
+                              value={newDomainName}
+                              placeholder={PLAN_COPY.domainOtherPlaceholder}
+                              onChange={(event) => setNewDomainName(event.target.value)}
+                            />
+                            <button
+                              type="button"
+                              className="mt-2 w-full rounded-lg border border-slate-200 px-2 py-1 text-xs text-text"
+                              onClick={() =>
+                                void handleCreateDomainForTask(task.id, domain.id)
+                              }
+                              disabled={!newDomainName.trim() || weekPlan?.domains.length === 7}
+                            >
+                              {PLAN_COPY.createDomain}
+                            </button>
+                            {weekPlan?.domains.length === 7 ? (
+                              <p className="mt-2 text-[11px] text-mutedText">
+                                {PLAN_COPY.domainLimitNote}
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                    <button
+                      type="button"
+                      className="ml-auto text-xs text-mutedText hover:text-text"
+                      onClick={() => handleRemoveTask(domain.id, task.id)}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <p className="text-xs text-mutedText">{PLAN_COPY.domainAssignHelper}</p>
+          </div>
+        </div>
+        {lastWeekPlan ? (
+          <aside className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-text">
+            <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
+              Last week
+            </p>
+            <p className="mt-2 text-sm font-medium text-text">
+              Tasks & completion
+            </p>
+            <p className="mt-1 text-xs text-mutedText">
+              A quick reference from the previous plan.
+            </p>
+            <div className="mt-4 space-y-3">
+              {lastWeekTasks.length === 0 ? (
+                <p className="text-xs text-mutedText">
+                  No tasks logged last week.
+                </p>
+              ) : (
+                lastWeekTasks.map((task) => (
+                  <div
+                    key={task.id}
+                    className="rounded-xl border border-slate-200 px-3 py-2"
+                  >
+                    <div className="flex items-center justify-between text-xs text-mutedText">
+                      <span className="font-medium text-text">{task.title}</span>
+                      <span>{task.domainName}</span>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between text-xs text-mutedText">
+                      <span>{Math.round(task.plannedHours)}h planned</span>
+                      <span>{Math.round(task.completedHours)}h completed</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </aside>
+        ) : null}
+        </div>
+      </section>
+      ) : null}
 
       {!planningComplete ? (
         <section className="rounded-2xl border border-slate-200 bg-surface p-6 shadow-sm">

@@ -24,14 +24,31 @@ export const completeOnboarding = async (page: Page) => {
   await page.getByTestId('onboarding-next').click();
 
   await expect(page).toHaveURL(/onboarding\/reflection/);
+  // Reflection is a single page with state-based question advancement
+  // (counter goes "Question N of M"), so URL doesn't change between
+  // questions — we wait on the counter text instead of networkidle.
+  const counter = page.getByTestId('reflection-question-counter');
   for (let step = 0; step < 10; step += 1) {
     if (page.url().includes('/onboarding/settings')) break;
+    const before = await counter.textContent().catch(() => null);
     const textInput = page.locator('[data-testid^="reflection-input-"]').first();
     if (await textInput.count()) {
       await textInput.fill('Noted.');
+    } else {
+      const firstOption = page
+        .locator('[data-testid^="reflection-option-"]')
+        .first();
+      if (await firstOption.count()) {
+        await firstOption.click();
+      }
     }
     await page.getByTestId('onboarding-next').click();
-    await page.waitForLoadState('networkidle').catch(() => undefined);
+    await Promise.race([
+      page.waitForURL(/onboarding\/settings/, { timeout: 5_000 }),
+      counter
+        .filter({ hasNotText: before ?? '___never___' })
+        .waitFor({ timeout: 5_000 }),
+    ]).catch(() => undefined);
   }
 
   await expect(page).toHaveURL(/onboarding\/settings/);

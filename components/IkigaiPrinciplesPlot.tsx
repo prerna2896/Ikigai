@@ -309,13 +309,16 @@ export default function IkigaiPrinciplesPlot({
           pointerEvents="none"
         />
 
-        {/* Planned-outline triangles (washed out) */}
-        {wedges.map((w) => {
-          const isActive = active === w.id;
+        {/* Planned-outline triangles (washed out). Each wedge touches
+            two principle vertices (its own and the next clockwise), so
+            both adjacent wedges are "active" for a given principle —
+            that way hovering Growth highlights the whole lower half of
+            the diamond, not just the slice owned by Growth's id. */}
+        {wedges.map((w, i) => {
+          const nextId = wedges[(i + 1) % wedges.length].id;
+          const isActive =
+            active !== null && (active === w.id || active === nextId);
           const dim = active !== null && !isActive;
-          // Bumped from 0.14 → 0.32 so the four pastel quadrants
-          // read as colour at rest (no hover) — matching the way
-          // the domains chart's outer ring is clearly tinted.
           const fillOpacity = isActive ? 0.45 : dim ? 0.1 : 0.32;
           return (
             <path
@@ -342,10 +345,12 @@ export default function IkigaiPrinciplesPlot({
             means principles with progress show up as bold colour and
             empty ones simply don't paint. */}
         {anyCompletion
-          ? wedges.map((w) => {
-              const isActive = active === w.id;
+          ? wedges.map((w, i) => {
+              const nextW = wedges[(i + 1) % wedges.length];
+              const isActive =
+                active !== null && (active === w.id || active === nextW.id);
               const dim = active !== null && !isActive;
-              if (!w.hasCompletion && !wedges[(wedges.indexOf(w) + 1) % wedges.length].hasCompletion) {
+              if (!w.hasCompletion && !nextW.hasCompletion) {
                 // Both this principle AND the next one (which shares
                 // the triangle's far vertex) have zero completion —
                 // skip rendering to avoid empty paths in the DOM.
