@@ -5,7 +5,9 @@ import type { WeekLogEntry, WeekPlan } from '@ikigai/core';
 import { getLocalRepository } from '@ikigai/storage';
 import { addDomainToPlan, withDerivedPlannedHours } from '../app/week/plan/planUtils';
 import { CrystalIkigai } from './CrystalIkigai';
-import IkigaiPrinciplesPlot from './IkigaiPrinciplesPlot';
+import IkigaiPrinciplesPlot, {
+  type IkigaiPrincipleId,
+} from './IkigaiPrinciplesPlot';
 import { useTheme } from './ThemeProvider';
 import WeekGoals from './WeekGoals';
 
@@ -50,6 +52,9 @@ export default function LogPanel({
   const [weekLogs, setWeekLogs] = useState<WeekLogEntry[]>([]);
   const [logForm, setLogForm] = useState<LogFormState>({});
   const [plotMode, setPlotMode] = useState<'domains' | 'ikigai'>('domains');
+  const [selectedDomainId, setSelectedDomainId] = useState<string | null>(null);
+  const [selectedPrincipleId, setSelectedPrincipleId] =
+    useState<IkigaiPrincipleId | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -326,11 +331,21 @@ export default function LogPanel({
                 variant={theme}
                 domains={crystalDomains}
                 showSkeleton={!hasTasks}
+                activeDomainId={selectedDomainId}
+                onSelectDomain={(domainId) => {
+                  setSelectedPrincipleId(null);
+                  setSelectedDomainId(domainId);
+                }}
               />
             ) : (
               <IkigaiPrinciplesPlot
                 domains={plan.domains}
                 taskCompletedHours={weekTotals}
+                activePrincipleId={selectedPrincipleId}
+                onSelectPrinciple={(principleId) => {
+                  setSelectedDomainId(null);
+                  setSelectedPrincipleId(principleId);
+                }}
               />
             )}
           </div>

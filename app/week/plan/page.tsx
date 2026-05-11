@@ -1291,7 +1291,9 @@ export default function WeekPlanPage() {
                       void addTaskToPlan(
                         commitmentsLabel,
                         commitmentsHours,
-                        getDomainIdByName('Work / Study'),
+                        getDomainIdByName(
+                          commitmentsLabel === 'School' ? 'Study' : 'Work',
+                        ),
                       )
                     }
                   >

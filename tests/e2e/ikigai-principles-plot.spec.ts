@@ -9,7 +9,7 @@ test.describe('IkigaiPrinciplesPlot', () => {
     await completeOnboarding(page);
 
     // Add tasks that route to two different principles. "Deep work" →
-    // Work / Study domain → growth principle (via "study" keyword);
+    // Work domain → contribution principle (via "work" keyword);
     // "Run" → Health domain → energy principle.
     await addTask(page, { title: 'Deep work', hours: 10 });
     await addTask(page, { title: 'Run', hours: 4 });
@@ -25,28 +25,28 @@ test.describe('IkigaiPrinciplesPlot', () => {
     const segments = page.locator('[data-testid^="plot-segment-"]');
     await expect(segments).toHaveCount(4);
 
-    // Hover the wedge for "growth" — Work / Study rolls up here.
-    const growth = page.locator(
-      '[data-testid^="plot-segment-"][data-principle-id="growth"]',
+    // Hover the wedge for "contribution" — Work rolls up here.
+    const contribution = page.locator(
+      '[data-testid^="plot-segment-"][data-principle-id="contribution"]',
     );
-    await growth.hover();
+    await contribution.hover();
     const legend = page.getByTestId('principle-legend');
     await expect(legend).toBeVisible();
     await expect(page.getByTestId('principle-legend-name')).toHaveText(
-      'Growth',
+      'Contribution',
     );
     await expect(page.getByTestId('principle-legend-stats')).toContainText(
       /\d+(\.\d+)?h planned \(\d+%\)/,
     );
     await expect(page.getByTestId('principle-legend-domains')).toContainText(
-      /Work\s*\/\s*Study \d+(\.\d+)?h/,
+      /Work \d+(\.\d+)?h/,
     );
 
     // Click the wedge — sidebar panel opens for the principle. A
     // single click must pin reliably (no "moving target" — the
     // visible triangles transition fill-opacity but the hit-zone
     // stays put).
-    await growth.click();
+    await contribution.click();
     await expect(page.getByTestId('selected-segment-panel')).toBeVisible();
     // The legend's pin hint disappears once the principle is pinned.
     await expect(page.getByTestId('principle-legend')).not.toContainText(
@@ -121,7 +121,7 @@ test.describe('IkigaiPrinciplesPlot', () => {
     page,
   }) => {
     await completeOnboarding(page);
-    // Work / Study → growth principle (matches "study" first).
+    // "Deep work" → Work domain → contribution principle (via "work" keyword).
     await addTask(page, { title: 'Deep work', hours: 10 });
     await page.getByRole('button', { name: 'Ikigai' }).click();
 
@@ -186,29 +186,29 @@ test.describe('IkigaiPrinciplesPlot', () => {
     await page.reload();
     await page.getByRole('button', { name: 'Ikigai' }).click();
 
-    // Growth now has logged hours → its hit-zone reports completion;
+    // Contribution now has logged hours → its hit-zone reports completion;
     // every other principle stays at zero so they remain unfilled.
-    const growth = page.locator(
-      '[data-testid^="plot-segment-"][data-principle-id="growth"]',
+    const contribution = page.locator(
+      '[data-testid^="plot-segment-"][data-principle-id="contribution"]',
     );
-    await expect(growth).toHaveAttribute('data-has-completion', 'true');
-    await expect(growth).toHaveAttribute('data-completed-hours', '7');
+    await expect(contribution).toHaveAttribute('data-has-completion', 'true');
+    await expect(contribution).toHaveAttribute('data-completed-hours', '7');
 
     const others = page.locator(
-      '[data-testid^="plot-segment-"]:not([data-principle-id="growth"])',
+      '[data-testid^="plot-segment-"]:not([data-principle-id="contribution"])',
     );
     const otherFlags = await others.evaluateAll((nodes) =>
       nodes.map((n) => (n as HTMLElement).dataset.hasCompletion),
     );
     expect(otherFlags.every((v) => v === 'false')).toBe(true);
 
-    // Hover Growth and verify the legend uses the completion format.
-    await growth.hover();
+    // Hover Contribution and verify the legend uses the completion format.
+    await contribution.hover();
     const stats = page.getByTestId('principle-legend-stats');
     await expect(stats).toContainText('7 of 10h planned');
     await expect(stats).toContainText('70% complete');
     await expect(page.getByTestId('principle-legend-domains')).toContainText(
-      /Work\s*\/\s*Study 7\/10h/,
+      /Work 7\/10h/,
     );
   });
 });

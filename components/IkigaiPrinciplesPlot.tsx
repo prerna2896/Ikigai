@@ -42,23 +42,61 @@ const PRINCIPLES: Principle[] = [
   },
 ];
 
+// Domain-name → principle routing. Checks more specific principle
+// keywords first so e.g. "Personal Growth" lands on Growth (via
+// `growth`) rather than Contribution (via `work` if its name happened
+// to contain that word). Contribution is checked before Growth so a
+// legacy "Work / Study" domain — created before the defaults were
+// split into Work + Study — routes to Contribution, matching the
+// user-facing intent that Work is contribution.
 export const getPrincipleForDomain = (
   domainName: string,
 ): IkigaiPrincipleId => {
   const key = domainName.toLowerCase();
-  if (key.includes('rest') || key.includes('recharge') || key.includes('sleep')) {
+  if (
+    key.includes('rest') ||
+    key.includes('recharge') ||
+    key.includes('sleep')
+  ) {
     return 'energy';
   }
-  if (key.includes('health') || key.includes('fitness') || key.includes('gym')) {
+  if (
+    key.includes('health') ||
+    key.includes('fitness') ||
+    key.includes('gym')
+  ) {
     return 'energy';
   }
-  if (key.includes('growth') || key.includes('learn') || key.includes('study')) {
+  if (
+    key.includes('personal growth') ||
+    key.includes('learn') ||
+    key.includes('skill') ||
+    key.includes('practice')
+  ) {
     return 'growth';
   }
-  if (key.includes('work') || key.includes('career') || key.includes('contribute')) {
+  if (
+    key.includes('work') ||
+    key.includes('career') ||
+    key.includes('contribute') ||
+    key.includes('job')
+  ) {
     return 'contribution';
   }
-  if (key.includes('relationship') || key.includes('family') || key.includes('home')) {
+  if (
+    key.includes('study') ||
+    key.includes('school') ||
+    key.includes('class') ||
+    key.includes('course') ||
+    key.includes('growth')
+  ) {
+    return 'growth';
+  }
+  if (
+    key.includes('relationship') ||
+    key.includes('family') ||
+    key.includes('home')
+  ) {
     return 'alignment';
   }
   if (key.includes('spirit') || key.includes('faith')) {

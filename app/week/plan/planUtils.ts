@@ -10,7 +10,7 @@ const DEFAULT_DOMAIN_NAMES = [...DEFAULT_WEEK_DOMAINS];
 
 const DOMAIN_KEYWORDS: Array<{ name: string; keywords: string[] }> = [
   {
-    name: 'Work / Study',
+    name: 'Work',
     keywords: [
       'work',
       'job',
@@ -22,12 +22,19 @@ const DOMAIN_KEYWORDS: Array<{ name: string; keywords: string[] }> = [
       'presentation',
       'shift',
       'office',
+    ],
+  },
+  {
+    name: 'Study',
+    keywords: [
       'class',
       'course',
       'study',
       'exam',
       'lecture',
       'homework',
+      'assignment',
+      'syllabus',
     ],
   },
   {
