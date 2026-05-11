@@ -1,13 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { WeekDomain } from '@ikigai/core';
+import type { IkigaiPrincipleId, WeekDomain } from '@ikigai/core';
 
-export type IkigaiPrincipleId =
-  | 'energy'
-  | 'growth'
-  | 'contribution'
-  | 'alignment';
+export type { IkigaiPrincipleId };
 
 type IkigaiPrinciplesPlotProps = {
   domains: WeekDomain[];
@@ -41,69 +37,6 @@ const PRINCIPLES: Principle[] = [
     angle: Math.PI,
   },
 ];
-
-// Domain-name → principle routing. Checks more specific principle
-// keywords first so e.g. "Personal Growth" lands on Growth (via
-// `growth`) rather than Contribution (via `work` if its name happened
-// to contain that word). Contribution is checked before Growth so a
-// legacy "Work / Study" domain — created before the defaults were
-// split into Work + Study — routes to Contribution, matching the
-// user-facing intent that Work is contribution.
-export const getPrincipleForDomain = (
-  domainName: string,
-): IkigaiPrincipleId => {
-  const key = domainName.toLowerCase();
-  if (
-    key.includes('rest') ||
-    key.includes('recharge') ||
-    key.includes('sleep')
-  ) {
-    return 'energy';
-  }
-  if (
-    key.includes('health') ||
-    key.includes('fitness') ||
-    key.includes('gym')
-  ) {
-    return 'energy';
-  }
-  if (
-    key.includes('personal growth') ||
-    key.includes('learn') ||
-    key.includes('skill') ||
-    key.includes('practice')
-  ) {
-    return 'growth';
-  }
-  if (
-    key.includes('work') ||
-    key.includes('career') ||
-    key.includes('contribute') ||
-    key.includes('job')
-  ) {
-    return 'contribution';
-  }
-  if (
-    key.includes('study') ||
-    key.includes('school') ||
-    key.includes('class') ||
-    key.includes('course') ||
-    key.includes('growth')
-  ) {
-    return 'growth';
-  }
-  if (
-    key.includes('relationship') ||
-    key.includes('family') ||
-    key.includes('home')
-  ) {
-    return 'alignment';
-  }
-  if (key.includes('spirit') || key.includes('faith')) {
-    return 'alignment';
-  }
-  return 'alignment';
-};
 
 const formatHours = (n: number) => {
   const rounded = Math.round(n * 10) / 10;
@@ -140,7 +73,7 @@ export default function IkigaiPrinciplesPlot({
   const totals = useMemo(() => {
     const acc = emptyTotals();
     domains.forEach((domain) => {
-      const id = getPrincipleForDomain(domain.name);
+      const id = domain.principleId;
       const planned = domain.plannedHours || 0;
       const completed = domain.tasks.reduce(
         (sum, task) =>

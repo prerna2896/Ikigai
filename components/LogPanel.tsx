@@ -1,13 +1,18 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import type { WeekLogEntry, WeekPlan } from '@ikigai/core';
+import {
+  IKIGAI_PRINCIPLE_LABEL,
+  IKIGAI_PRINCIPLE_IDS,
+  suggestPrincipleForName,
+  type IkigaiPrincipleId,
+  type WeekLogEntry,
+  type WeekPlan,
+} from '@ikigai/core';
 import { getLocalRepository } from '@ikigai/storage';
 import { addDomainToPlan, withDerivedPlannedHours } from '../app/week/plan/planUtils';
 import { CrystalIkigai } from './CrystalIkigai';
-import IkigaiPrinciplesPlot, {
-  type IkigaiPrincipleId,
-} from './IkigaiPrinciplesPlot';
+import IkigaiPrinciplesPlot from './IkigaiPrinciplesPlot';
 import { useTheme } from './ThemeProvider';
 import WeekGoals from './WeekGoals';
 
@@ -67,6 +72,9 @@ export default function LogPanel({
     { title: string; hours: number; domainId: string }[]
   >([]);
   const [newDomainName, setNewDomainName] = useState('');
+  const [newDomainPrincipleId, setNewDomainPrincipleId] = useState<
+    IkigaiPrincipleId | null
+  >(null);
 
   useEffect(() => {
     setPlan(weekPlan);
@@ -184,13 +192,20 @@ export default function LogPanel({
     if (!trimmed || plan.domains.length >= 12) return;
     try {
       const repo = getLocalRepository();
-      const { plan: nextPlan, domain } = addDomainToPlan(plan, trimmed);
+      const principle =
+        newDomainPrincipleId ?? suggestPrincipleForName(trimmed);
+      const { plan: nextPlan, domain } = addDomainToPlan(
+        plan,
+        trimmed,
+        principle,
+      );
       const normalized = withDerivedPlannedHours(nextPlan);
       await repo.saveWeekPlan(normalized);
       setPlan(normalized);
       onPlanChange?.(normalized);
       setUnplannedDomainId(domain.id);
       setNewDomainName('');
+      setNewDomainPrincipleId(null);
     } catch (err) {
       setError(String(err));
     }
@@ -532,6 +547,23 @@ export default function LogPanel({
             onChange={(event) => setNewDomainName(event.target.value)}
             placeholder="New domain name"
           />
+          <select
+            className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm text-text"
+            value={
+              newDomainPrincipleId ??
+              suggestPrincipleForName(newDomainName.trim() || 'general')
+            }
+            onChange={(event) =>
+              setNewDomainPrincipleId(event.target.value as IkigaiPrincipleId)
+            }
+            aria-label="Principle for new domain"
+          >
+            {IKIGAI_PRINCIPLE_IDS.map((id) => (
+              <option key={id} value={id}>
+                {IKIGAI_PRINCIPLE_LABEL[id]}
+              </option>
+            ))}
+          </select>
           <button
             type="button"
             className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium text-text disabled:opacity-60"

@@ -1,3 +1,5 @@
+import type { IkigaiPrincipleId } from './principle';
+
 export type Domain = {
   id: string; // uuid
   name: string;
@@ -127,6 +129,10 @@ export type WeekDomain = {
   colorKey: string;
   plannedHours: number;
   tasks: DomainTask[];
+  // The ikigai principle this domain rolls up into. Stored explicitly
+  // (rather than inferred from the name) so renames don't silently
+  // change which principle a domain contributes to.
+  principleId: IkigaiPrincipleId;
 };
 
 export type WeekGoal = {

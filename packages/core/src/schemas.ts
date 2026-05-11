@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { DOMAIN_COLOR_TOKENS } from './constants';
+import { IKIGAI_PRINCIPLE_IDS } from './principle';
 
 const isoDateString = z.string().datetime({ offset: true });
 const nonNegativeNumber = z.number().min(0);
@@ -116,6 +117,7 @@ export const weekDomainSchema = z.object({
   colorKey: z.string(),
   plannedHours: nonNegativeNumber,
   tasks: z.array(domainTaskSchema),
+  principleId: z.enum(IKIGAI_PRINCIPLE_IDS),
 });
 
 export const weekGoalSchema = z.object({

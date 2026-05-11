@@ -8,7 +8,7 @@ import type {
   WeekNote,
   WeekPlan,
 } from '@ikigai/core';
-import { getPrincipleForDomain, type IkigaiPrincipleId } from '../../components/IkigaiPrinciplesPlot';
+import { suggestPrincipleForName, type IkigaiPrincipleId } from '@ikigai/core';
 import { getLocalRepository } from '@ikigai/storage';
 import { getWeekEndISO, withDerivedPlannedHours } from '../week/plan/planUtils';
 import {
@@ -361,7 +361,10 @@ export default function HistoryPage() {
         alignment: { planned: 0, completed: 0 },
       };
     Object.entries(selectedSummary.domainTotals).forEach(([domainName, values]) => {
-      const key = getPrincipleForDomain(domainName);
+      // History rolls up by domain *name*, so we don't have the
+      // domain object's explicit principleId here — fall back to the
+      // same keyword inference the editor uses as a default.
+      const key = suggestPrincipleForName(domainName);
       totals[key].planned += values.planned;
       totals[key].completed += values.completed;
     });

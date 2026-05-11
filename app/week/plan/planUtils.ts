@@ -1,7 +1,9 @@
 import {
   DEFAULT_WEEK_DOMAINS,
   PLOT_COLOR_KEYS,
+  suggestPrincipleForName,
   type DomainTask,
+  type IkigaiPrincipleId,
   type WeekPlan,
   type WeekDomain,
 } from '@ikigai/core';
@@ -172,6 +174,7 @@ export const createDefaultWeekPlan = (
     colorKey: PLOT_COLOR_KEYS[index % PLOT_COLOR_KEYS.length],
     plannedHours: 0,
     tasks: [],
+    principleId: suggestPrincipleForName(name),
   }));
   return {
     id: weekStartISO,
@@ -258,6 +261,7 @@ export const suggestDomainForTask = (
 export const addDomainToPlan = (
   plan: WeekPlan,
   name: string,
+  principleId?: IkigaiPrincipleId,
 ): { plan: WeekPlan; domain: WeekDomain } => {
   const domain: WeekDomain = {
     id: crypto.randomUUID(),
@@ -265,6 +269,7 @@ export const addDomainToPlan = (
     colorKey: pickNextColorKey(plan.domains),
     plannedHours: 0,
     tasks: [],
+    principleId: principleId ?? suggestPrincipleForName(name),
   };
   return {
     plan: {
