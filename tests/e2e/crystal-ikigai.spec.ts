@@ -339,6 +339,12 @@ test.describe('CrystalIkigai chart', () => {
     // palette — so Rest & Recharge ended up wearing Personal
     // Growth's yellow instead of its own purple. Colours need to
     // follow each domain's position in the *unfiltered* list.
+    // Pin to the 'current' palette so the asserted hex values stay
+    // stable regardless of which theme is the app default.
+    await page.addInitScript(() => {
+      window.localStorage.setItem('ikigai-theme', 'current');
+    });
+    await page.goto('/');
     await completeOnboarding(page);
     await addTask(page, { title: 'Deep work', hours: 8 });
     await addTask(page, { title: 'Rest', hours: 14 });

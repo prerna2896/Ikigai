@@ -62,7 +62,7 @@ export const settingsSchema = z.object({
 export const weekDraftSchema = z.object({
   weekId: z.string(),
   state: z.literal('draft'),
-  activeDomainIds: z.array(z.string()).max(7),
+  activeDomainIds: z.array(z.string()).max(12),
   weeklyCapacityMinutes: nonNegativeNumber,
   bufferPercent: nonNegativeNumber,
   sleepMinutesPerDay: nonNegativeNumber,
@@ -139,7 +139,7 @@ export const weekPlanSchema = z.object({
   ]),
   weekTimeZone: z.string(),
   createdAtISO: isoDateString,
-  domains: z.array(weekDomainSchema).max(7),
+  domains: z.array(weekDomainSchema).max(12),
   goals: z.array(weekGoalSchema).max(3).optional(),
   isFrozen: z.boolean(),
 });

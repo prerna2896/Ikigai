@@ -52,15 +52,17 @@ export default function CrystalIkigai({
   // inside the wrapper because segments handle their own selection.
   useEffect(() => {
     if (!onSelectDomain || !activeDomainId) return;
-    const handle = (event: MouseEvent) => {
+    const handle = (event: PointerEvent) => {
       const node = wrapperRef.current;
       if (!node) return;
       const target = event.target;
       if (target instanceof Node && node.contains(target)) return;
       onSelectDomain(null);
     };
-    document.addEventListener('mousedown', handle);
-    return () => document.removeEventListener('mousedown', handle);
+    // pointerdown rather than mousedown so touch dismissals work on
+    // mobile — iOS doesn't synthesize mouse events until after touchend.
+    document.addEventListener('pointerdown', handle);
+    return () => document.removeEventListener('pointerdown', handle);
   }, [onSelectDomain, activeDomainId]);
 
   // Only show domains that actually have planned hours. Domains with no
@@ -505,19 +507,25 @@ export default function CrystalIkigai({
           height={size + viewPadY * 2}
           fill="transparent"
           pointerEvents={onSelectDomain ? 'all' : 'none'}
-          style={{ cursor: onSelectDomain ? 'pointer' : 'default' }}
-          onMouseMove={(event) => {
+          // touchAction: manipulation removes the iOS 300ms tap delay
+          // so wedges respond immediately on touch.
+          style={{
+            cursor: onSelectDomain ? 'pointer' : 'default',
+            touchAction: 'manipulation',
+          }}
+          onPointerMove={(event) => {
+            if (event.pointerType !== 'mouse') return;
             const hit = findHitAt(event);
             setHovered(hit.kind === 'wedge' ? hit.wedge.id : null);
           }}
-          onMouseLeave={() => setHovered(null)}
-          onClick={(event) => {
+          onPointerLeave={() => setHovered(null)}
+          onPointerUp={(event) => {
             event.stopPropagation();
             const hit = findHitAt(event);
             if (hit.kind === 'wedge') {
               onSelectDomain?.(hit.wedge.id);
             } else if (hit.kind === 'outside') {
-              // Clicked the empty white space outside the chart →
+              // Pointer-up on empty white space outside the chart →
               // dismiss the pinned domain, mirroring "click outside
               // to deselect".
               onSelectDomain?.(null);

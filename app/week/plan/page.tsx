@@ -371,7 +371,7 @@ export default function WeekPlanPage() {
       const suggestion = suggestDomainForTask(trimmed, updatedPlan.domains);
       targetDomainId = suggestion.domainId ?? null;
 
-      if (!targetDomainId && suggestion.createName && updatedPlan.domains.length < 7) {
+      if (!targetDomainId && suggestion.createName && updatedPlan.domains.length < 12) {
         const { plan, domain } = addDomainToPlan(updatedPlan, suggestion.createName);
         updatedPlan = plan;
         targetDomainId = domain.id;
@@ -410,7 +410,7 @@ export default function WeekPlanPage() {
   };
 
   const handleAddDomain = async () => {
-    if (!repository || !weekPlan || weekPlan.domains.length >= 7) {
+    if (!repository || !weekPlan || weekPlan.domains.length >= 12) {
       return;
     }
     const name = makeNewDomainName(weekPlan);
@@ -443,7 +443,7 @@ export default function WeekPlanPage() {
     taskId: string,
     currentDomainId: string,
   ) => {
-    if (!weekPlan || !newDomainName.trim() || weekPlan.domains.length >= 7) {
+    if (!weekPlan || !newDomainName.trim() || weekPlan.domains.length >= 12) {
       return;
     }
     const { plan, domain } = addDomainToPlan(weekPlan, newDomainName.trim());
@@ -816,7 +816,7 @@ export default function WeekPlanPage() {
                     : PLAN_COPY.renameHint}
                 </p>
               </div>
-              {weekPlan && weekPlan.domains.length >= 7 ? (
+              {weekPlan && weekPlan.domains.length >= 12 ? (
                 <span className="text-xs text-mutedText">{PLAN_COPY.maxDomains}</span>
               ) : null}
               {sidebarOpen ? (
@@ -1031,7 +1031,7 @@ export default function WeekPlanPage() {
                   >
                     View domains
                   </button>
-                  {weekPlan && weekPlan.domains.length >= 7 ? (
+                  {weekPlan && weekPlan.domains.length >= 12 ? (
                     <span className="text-xs text-mutedText">
                       {PLAN_COPY.maxDomains}
                     </span>
@@ -1479,11 +1479,11 @@ export default function WeekPlanPage() {
                               onClick={() =>
                                 void handleCreateDomainForTask(task.id, domain.id)
                               }
-                              disabled={!newDomainName.trim() || weekPlan?.domains.length === 7}
+                              disabled={!newDomainName.trim() || weekPlan?.domains.length === 12}
                             >
                               {PLAN_COPY.createDomain}
                             </button>
-                            {weekPlan?.domains.length === 7 ? (
+                            {weekPlan?.domains.length === 12 ? (
                               <p className="mt-2 text-[11px] text-mutedText">
                                 {PLAN_COPY.domainLimitNote}
                               </p>

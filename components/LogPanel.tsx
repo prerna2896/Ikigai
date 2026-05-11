@@ -176,7 +176,7 @@ export default function LogPanel({
 
   const handleAddUnplannedDomain = async () => {
     const trimmed = newDomainName.trim();
-    if (!trimmed || plan.domains.length >= 7) return;
+    if (!trimmed || plan.domains.length >= 12) return;
     try {
       const repo = getLocalRepository();
       const { plan: nextPlan, domain } = addDomainToPlan(plan, trimmed);
@@ -205,6 +205,7 @@ export default function LogPanel({
         }
       });
       let workingPlan = plan;
+      let planChanged = false;
       if (unplannedTasks.length > 0) {
         const newTasks = unplannedTasks.map((task) => ({
           id: crypto.randomUUID(),
@@ -213,7 +214,7 @@ export default function LogPanel({
           domainId: task.domainId,
           hours: task.hours,
         }));
-        workingPlan = {
+        const mergedPlan = {
           ...plan,
           domains: plan.domains.map((domain) => {
             const additions = newTasks
@@ -231,11 +232,9 @@ export default function LogPanel({
         newTasks.forEach((task) => {
           taskHours[task.id] = task.hours;
         });
-        const normalized = withDerivedPlannedHours(workingPlan);
-        await repo.saveWeekPlan(normalized);
-        setPlan(normalized);
-        onPlanChange?.(normalized);
-        workingPlan = normalized;
+        workingPlan = withDerivedPlannedHours(mergedPlan);
+        await repo.saveWeekPlan(workingPlan);
+        planChanged = true;
       }
       if (Object.keys(taskHours).length === 0) {
         setError('Add at least one number before saving.');
@@ -254,6 +253,14 @@ export default function LogPanel({
       const ordered = [...refreshed].sort((a, b) =>
         a.dateISO < b.dateISO ? 1 : -1,
       );
+      // Batch all UI-visible state updates together so the new task
+      // appears in the list at the same instant its logged hours do —
+      // otherwise the row flashes briefly as "0h logged" between the
+      // saveWeekPlan re-render and the getWeekLogs refresh.
+      if (planChanged) {
+        setPlan(workingPlan);
+        onPlanChange?.(workingPlan);
+      }
       setWeekLogs(ordered);
       setLogForm({});
       setUnplannedTasks([]);
@@ -514,12 +521,12 @@ export default function LogPanel({
             type="button"
             className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium text-text disabled:opacity-60"
             onClick={() => void handleAddUnplannedDomain()}
-            disabled={plan.domains.length >= 7}
+            disabled={plan.domains.length >= 12}
           >
             Add domain
           </button>
-          {plan.domains.length >= 7 ? (
-            <span className="text-[11px]">Max 7 domains</span>
+          {plan.domains.length >= 12 ? (
+            <span className="text-[11px]">Max 12 domains</span>
           ) : null}
         </div>
         <p className="mt-2 text-[11px]">Save log records everything at once.</p>
