@@ -1,13 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { WeekDomain } from '@ikigai/core';
+import type { IkigaiPrincipleId, WeekDomain } from '@ikigai/core';
 
-export type IkigaiPrincipleId =
-  | 'energy'
-  | 'growth'
-  | 'contribution'
-  | 'alignment';
+export type { IkigaiPrincipleId };
 
 type IkigaiPrinciplesPlotProps = {
   domains: WeekDomain[];
@@ -41,31 +37,6 @@ const PRINCIPLES: Principle[] = [
     angle: Math.PI,
   },
 ];
-
-export const getPrincipleForDomain = (
-  domainName: string,
-): IkigaiPrincipleId => {
-  const key = domainName.toLowerCase();
-  if (key.includes('rest') || key.includes('recharge') || key.includes('sleep')) {
-    return 'energy';
-  }
-  if (key.includes('health') || key.includes('fitness') || key.includes('gym')) {
-    return 'energy';
-  }
-  if (key.includes('growth') || key.includes('learn') || key.includes('study')) {
-    return 'growth';
-  }
-  if (key.includes('work') || key.includes('career') || key.includes('contribute')) {
-    return 'contribution';
-  }
-  if (key.includes('relationship') || key.includes('family') || key.includes('home')) {
-    return 'alignment';
-  }
-  if (key.includes('spirit') || key.includes('faith')) {
-    return 'alignment';
-  }
-  return 'alignment';
-};
 
 const formatHours = (n: number) => {
   const rounded = Math.round(n * 10) / 10;
@@ -102,7 +73,7 @@ export default function IkigaiPrinciplesPlot({
   const totals = useMemo(() => {
     const acc = emptyTotals();
     domains.forEach((domain) => {
-      const id = getPrincipleForDomain(domain.name);
+      const id = domain.principleId;
       const planned = domain.plannedHours || 0;
       const completed = domain.tasks.reduce(
         (sum, task) =>

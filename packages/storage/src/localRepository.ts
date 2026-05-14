@@ -5,6 +5,7 @@ import {
   getBufferPercentForStrictness,
   profileSchema,
   settingsSchema,
+  suggestPrincipleForName,
   weekLogSchema,
   weekNoteSchema,
   weekPlanSchema,
@@ -38,6 +39,27 @@ const parseOrThrow = <T>(schema: z.ZodType<T>, data: unknown, context: string): 
     throw new Error(message);
   }
   throw new Error('Invalid data in local storage.');
+};
+
+// Fill missing domain fields on legacy WeekPlan records before Zod
+// parses them. principleId was introduced after defaults were already
+// in use, so existing rows can be missing it — backfill from the
+// domain name using suggestPrincipleForName.
+const repairWeekPlanRaw = (plan: unknown): unknown => {
+  if (!plan || typeof plan !== 'object') return plan;
+  const p = plan as Record<string, unknown>;
+  const domains = Array.isArray(p.domains) ? p.domains : null;
+  if (!domains) return plan;
+  let didChange = false;
+  const repairedDomains = domains.map((domain) => {
+    if (!domain || typeof domain !== 'object') return domain;
+    const d = domain as Record<string, unknown>;
+    if (typeof d.principleId === 'string') return domain;
+    didChange = true;
+    const name = typeof d.name === 'string' ? d.name : '';
+    return { ...d, principleId: suggestPrincipleForName(name) };
+  });
+  return didChange ? { ...p, domains: repairedDomains } : plan;
 };
 
 export class LocalRepository
@@ -232,12 +254,18 @@ export class LocalRepository
   }
 
   async getWeekPlan(weekStartISO: string): Promise<WeekPlan | null> {
-    const plan = await this.db.weekPlans.get(weekStartISO);
-    if (!plan) {
+    const raw = await this.db.weekPlans.get(weekStartISO);
+    if (!raw) {
       return null;
     }
+    const plan = repairWeekPlanRaw(raw);
+    const didRepair = plan !== raw;
     try {
-      return parseOrThrow(weekPlanSchema, plan, 'WeekPlan');
+      const validated = parseOrThrow(weekPlanSchema, plan, 'WeekPlan');
+      if (didRepair) {
+        await this.db.weekPlans.put(validated);
+      }
+      return validated;
     } catch (error) {
       if (typeof plan === 'object' && plan !== null && 'weekStartISO' in plan) {
         const timeZone =
@@ -271,9 +299,19 @@ export class LocalRepository
   }
 
   async listWeekPlans(): Promise<WeekPlan[]> {
-    const plans = await this.db.weekPlans.toArray();
+    const raw = await this.db.weekPlans.toArray();
+    const plans = raw.map(repairWeekPlanRaw);
+    const didRepair = plans.some((p, i) => p !== raw[i]);
     try {
-      return parseOrThrow(z.array(weekPlanSchema), plans, 'WeekPlan list');
+      const validated = parseOrThrow(
+        z.array(weekPlanSchema),
+        plans,
+        'WeekPlan list',
+      );
+      if (didRepair) {
+        await this.db.weekPlans.bulkPut(validated);
+      }
+      return validated;
     } catch (error) {
       const timeZone =
         Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';

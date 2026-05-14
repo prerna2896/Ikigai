@@ -361,15 +361,15 @@ test.describe('CrystalIkigai chart', () => {
     );
     // Pull domain names via the legend-on-hover paths would be slow;
     // read the names straight from the planning task rows instead.
-    // The first-added task lives in Work / Study; the second in
-    // Rest & Recharge. So one wedge must be sage-green (#7fb6a1,
-    // palette index 0) and the other muted purple (#b89ad6, palette
-    // index 5). If the bug regressed, Rest & Recharge would be
-    // yellow (#e0c068).
+    // The first-added task lives in Work (default index 0); the second
+    // in Rest & Recharge (default index 6). So one wedge must be sage-
+    // green (#7fb6a1, palette index 0) and the other slate-blue
+    // (#9ab8c6, palette index 6). If the bug regressed, Rest & Recharge
+    // would be sage-green's neighbour (#9ec48a, palette index 1).
     const colors = wedges.map((w) => w.color);
     expect(colors).toContain('#7fb6a1');
-    expect(colors).toContain('#b89ad6');
-    expect(colors).not.toContain('#e0c068');
+    expect(colors).toContain('#9ab8c6');
+    expect(colors).not.toContain('#9ec48a');
   });
 
   test('wedge inner fill is omitted while no hours are logged', async ({

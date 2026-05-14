@@ -12,7 +12,10 @@ import {
   computeWeeklyCapacity,
   getBufferPercentForStrictness,
   getOpeningRemark,
+  IKIGAI_PRINCIPLE_IDS,
+  IKIGAI_PRINCIPLE_LABEL,
   PROFESSION_COMMITMENT_LABELS,
+  suggestPrincipleForName,
 } from '@ikigai/core';
 import { getLocalRepository } from '@ikigai/storage';
 import CapacityCard from '../../../components/CapacityCard';
@@ -26,7 +29,6 @@ import { useTheme } from '../../../components/ThemeProvider';
 
 const USE_CRYSTAL_PLOT = true;
 import IkigaiPrinciplesPlot, {
-  getPrincipleForDomain,
   type IkigaiPrincipleId,
 } from '../../../components/IkigaiPrinciplesPlot';
 import { PLAN_COPY } from './copy';
@@ -103,6 +105,8 @@ export default function WeekPlanPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [domainPickerTaskId, setDomainPickerTaskId] = useState<string | null>(null);
   const [newDomainName, setNewDomainName] = useState('');
+  const [newDomainPrincipleId, setNewDomainPrincipleId] =
+    useState<IkigaiPrincipleId | null>(null);
   const [domainOverrides, setDomainOverrides] = useState<Record<string, string>>({});
   const [plotMode, setPlotMode] = useState<'domains' | 'ikigai'>('domains');
   const [selectedPrincipleId, setSelectedPrincipleId] =
@@ -446,10 +450,14 @@ export default function WeekPlanPage() {
     if (!weekPlan || !newDomainName.trim() || weekPlan.domains.length >= 12) {
       return;
     }
-    const { plan, domain } = addDomainToPlan(weekPlan, newDomainName.trim());
+    const trimmed = newDomainName.trim();
+    const principle =
+      newDomainPrincipleId ?? suggestPrincipleForName(trimmed);
+    const { plan, domain } = addDomainToPlan(weekPlan, trimmed, principle);
     const updated = moveTaskToDomain(plan, taskId, currentDomainId, domain.id);
     await persistPlan(updated);
     setNewDomainName('');
+    setNewDomainPrincipleId(null);
     setDomainPickerTaskId(null);
     setSelectedDomainId(domain.id);
   };
@@ -658,8 +666,7 @@ export default function WeekPlanPage() {
       alignment: 0,
     };
     weekPlan.domains.forEach((domain) => {
-      const principle = getPrincipleForDomain(domain.name);
-      base[principle] += domain.plannedHours || 0;
+      base[domain.principleId] += domain.plannedHours || 0;
     });
     return [
       { id: 'energy' as IkigaiPrincipleId, label: 'Energy', hours: base.energy },
@@ -674,7 +681,7 @@ export default function WeekPlanPage() {
       return [] as { id: string; title: string; hours: number; domainName: string }[];
     }
     const tasks = weekPlan.domains.flatMap((domain) =>
-      getPrincipleForDomain(domain.name) === selectedPrincipleId
+      domain.principleId === selectedPrincipleId
         ? domain.tasks.map((task) => ({
             id: task.id,
             title: task.title,
@@ -1291,7 +1298,9 @@ export default function WeekPlanPage() {
                       void addTaskToPlan(
                         commitmentsLabel,
                         commitmentsHours,
-                        getDomainIdByName('Work / Study'),
+                        getDomainIdByName(
+                          commitmentsLabel === 'School' ? 'Study' : 'Work',
+                        ),
                       )
                     }
                   >
@@ -1473,6 +1482,29 @@ export default function WeekPlanPage() {
                               placeholder={PLAN_COPY.domainOtherPlaceholder}
                               onChange={(event) => setNewDomainName(event.target.value)}
                             />
+                            <label className="mt-2 flex items-center gap-2 text-[11px] text-mutedText">
+                              <span className="shrink-0">Rolls up into</span>
+                              <select
+                                className="flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-text"
+                                value={
+                                  newDomainPrincipleId ??
+                                  suggestPrincipleForName(
+                                    newDomainName.trim() || 'general',
+                                  )
+                                }
+                                onChange={(event) =>
+                                  setNewDomainPrincipleId(
+                                    event.target.value as IkigaiPrincipleId,
+                                  )
+                                }
+                              >
+                                {IKIGAI_PRINCIPLE_IDS.map((id) => (
+                                  <option key={id} value={id}>
+                                    {IKIGAI_PRINCIPLE_LABEL[id]}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
                             <button
                               type="button"
                               className="mt-2 w-full rounded-lg border border-slate-200 px-2 py-1 text-xs text-text"

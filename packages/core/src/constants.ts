@@ -19,7 +19,8 @@ export const PLOT_COLOR_KEYS = [
 ] as const;
 
 export const DEFAULT_WEEK_DOMAINS = [
-  'Work / Study',
+  'Work',
+  'Study',
   'Health',
   'Home & Life',
   'Relationships',
