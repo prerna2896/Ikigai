@@ -26,6 +26,7 @@ import WeekGoals from '../../../components/WeekGoals';
 import IkigaiWheelPlot from '../../../components/IkigaiWheelPlot';
 import { CrystalIkigai } from '../../../components/CrystalIkigai';
 import { useTheme } from '../../../components/ThemeProvider';
+import { getDomainIcon } from '../../../lib/domainIcons';
 
 const USE_CRYSTAL_PLOT = true;
 import IkigaiPrinciplesPlot, {
@@ -920,7 +921,12 @@ export default function WeekPlanPage() {
                               className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-sm text-text"
                               onClick={() => setSelectedDomainId(domain.id)}
                             >
-                              <span className="font-medium">{domain.name}</span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-base" aria-hidden="true">
+                                  {getDomainIcon(domain.name)}
+                                </span>
+                                <span className="font-medium">{domain.name}</span>
+                              </div>
                               <span className="text-xs text-mutedText">
                                 {Math.round(domain.plannedHours)}h
                               </span>
@@ -1140,7 +1146,12 @@ export default function WeekPlanPage() {
                                 className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-sm text-text"
                                 onClick={() => setSelectedDomainId(domain.id)}
                               >
-                                <span className="font-medium">{domain.name}</span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-base" aria-hidden="true">
+                                    {getDomainIcon(domain.name)}
+                                  </span>
+                                  <span className="font-medium">{domain.name}</span>
+                                </div>
                                 <span className="text-xs text-mutedText">
                                   {Math.round(domain.plannedHours)}h
                                 </span>

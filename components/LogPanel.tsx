@@ -15,6 +15,7 @@ import { CrystalIkigai } from './CrystalIkigai';
 import IkigaiPrinciplesPlot from './IkigaiPrinciplesPlot';
 import { useTheme } from './ThemeProvider';
 import WeekGoals from './WeekGoals';
+import { getDomainIcon } from '../lib/domainIcons';
 
 type LogFormState = Record<string, string>;
 
@@ -28,16 +29,6 @@ const parseHours = (value: string) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-const getDomainIcon = (domainName: string) => {
-  const key = domainName.toLowerCase();
-  if (key.includes('work') || key.includes('study')) return '💼';
-  if (key.includes('health')) return '🫁';
-  if (key.includes('home') || key.includes('life')) return '🏠';
-  if (key.includes('relationship')) return '🤝';
-  if (key.includes('growth')) return '🌱';
-  if (key.includes('rest') || key.includes('recharge')) return '🫧';
-  return '•';
-};
 
 type LogPanelProps = {
   weekPlan: WeekPlan;

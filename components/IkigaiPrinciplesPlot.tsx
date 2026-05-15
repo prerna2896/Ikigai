@@ -168,7 +168,7 @@ export default function IkigaiPrinciplesPlot({
       const plannedRatio = t.plannedHours / peakHours;
       const plannedR = Math.max(plannedRatio * maxR, MIN_VERTEX_FRACTION * maxR);
       const completedRatio = t.plannedHours > 0
-        ? Math.min(1, t.completedHours / t.plannedHours) * plannedRatio
+        ? (t.completedHours / t.plannedHours) * plannedRatio
         : 0;
       const completedR = completedRatio * maxR;
       return {

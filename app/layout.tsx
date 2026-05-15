@@ -7,11 +7,13 @@ import { ThemeProvider } from '../components/ThemeProvider';
 export const metadata = {
   title: 'Ikigai',
   description: 'Plan and reflect on your week with calm structure.',
-};
+  themeColor: '#FEF7ED',
+}
 
 export const viewport = {
   width: 'device-width',
   initialScale: 1,
+  maximumScale: 1,
   viewportFit: 'cover' as const,
 };
 
