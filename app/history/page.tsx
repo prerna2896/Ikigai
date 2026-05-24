@@ -657,15 +657,15 @@ export default function HistoryPage() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-surface p-6 shadow-sm">
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="space-y-6">
+      <section className="rounded-2xl border border-slate-200 bg-surface p-4 sm:p-6 shadow-sm">
+        <div className="grid gap-4 sm:gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="space-y-4 sm:space-y-6">
             <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <h2 className="text-sm font-semibold text-text">
                   Weekly time series
                 </h2>
-                <div className="flex items-center gap-2 text-xs text-mutedText">
+                <div className="flex flex-wrap items-center gap-2 text-xs text-mutedText">
                   <label className="flex items-center gap-2">
                     <span>From</span>
                     <input
