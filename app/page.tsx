@@ -274,7 +274,7 @@ function NoOnboarding() {
         Begin <span aria-hidden>→</span>
       </Link>
       <p className="pt-4 text-xs text-mutedText">
-        Not a productivity tool. A self-alignment mirror.
+        A self-alignment mirror.
       </p>
     </section>
   );
