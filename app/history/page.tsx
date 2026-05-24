@@ -602,9 +602,9 @@ export default function HistoryPage() {
         ) : null}
       </header>
 
-      <section className="rounded-2xl border border-slate-200 bg-surface p-6 shadow-sm">
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+      <section className="rounded-2xl border border-slate-200 bg-surface p-4 sm:p-6 shadow-sm">
+        <div className="grid gap-3 sm:gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-2xl border border-slate-200 bg-white p-3 sm:p-4">
             <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
               Last week follow-through
             </p>
@@ -615,11 +615,11 @@ export default function HistoryPage() {
               {lastWeekSummary?.rangeLabel ?? 'Most recent week'}
             </p>
           </div>
-          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+          <div className="rounded-2xl border border-slate-200 bg-white p-3 sm:p-4">
             <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
               Most planned domain
             </p>
-            <p className="mt-2 text-lg font-semibold text-text">
+            <p className="mt-2 text-lg font-semibold text-text min-w-0 truncate">
               {lastWeekDomainStats[0]?.name ?? '—'}
             </p>
             <p className="text-xs text-mutedText">
@@ -628,11 +628,11 @@ export default function HistoryPage() {
                 : 'No data yet.'}
             </p>
           </div>
-          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+          <div className="rounded-2xl border border-slate-200 bg-white p-3 sm:p-4">
             <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
               Best matched domain
             </p>
-            <p className="mt-2 text-lg font-semibold text-text">
+            <p className="mt-2 text-lg font-semibold text-text min-w-0 truncate">
               {lastWeekBestMatch?.name ?? '—'}
             </p>
             <p className="text-xs text-mutedText">
@@ -641,11 +641,11 @@ export default function HistoryPage() {
                 : 'No data yet.'}
             </p>
           </div>
-          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+          <div className="rounded-2xl border border-slate-200 bg-white p-3 sm:p-4">
             <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
               Most under‑matched
             </p>
-            <p className="mt-2 text-lg font-semibold text-text">
+            <p className="mt-2 text-lg font-semibold text-text min-w-0 truncate">
               {lastWeekUnderMatch?.name ?? '—'}
             </p>
             <p className="text-xs text-mutedText">
@@ -988,7 +988,7 @@ export default function HistoryPage() {
                   </span>
                 </div>
               </div>
-              <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <div className="mt-4 grid gap-4 sm:gap-6 md:grid-cols-2">
                 <div className="space-y-3">
                   <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
                     Domains
@@ -1001,9 +1001,9 @@ export default function HistoryPage() {
                         key={domain.name}
                         className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-3"
                       >
-                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-mutedText">
-                          <span className="font-medium text-text">{domain.name}</span>
-                          <span>
+                        <div className="flex items-start justify-between gap-2 text-xs text-mutedText sm:items-center">
+                          <span className="font-medium text-text flex-shrink-0 min-w-0 truncate">{domain.name}</span>
+                          <span className="flex-shrink-0 whitespace-nowrap">
                             {Math.round(domain.completed)}h ·{' '}
                             {Math.round(domain.planned)}h
                           </span>
@@ -1042,9 +1042,9 @@ export default function HistoryPage() {
                       key={value.id}
                       className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-3"
                     >
-                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-mutedText">
-                        <span className="font-medium text-text">{value.label}</span>
-                        <span>
+                      <div className="flex items-start justify-between gap-2 text-xs text-mutedText sm:items-center">
+                        <span className="font-medium text-text flex-shrink-0 min-w-0 truncate">{value.label}</span>
+                        <span className="flex-shrink-0 whitespace-nowrap">
                           {Math.round(value.completed)}h ·{' '}
                           {Math.round(value.planned)}h
                         </span>
@@ -1090,15 +1090,15 @@ export default function HistoryPage() {
                   Richer green = steadier
                 </div>
               </div>
-              <div className="mt-4 grid gap-2 md:grid-cols-2">
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 {domainInsights.map((domain) => (
                   <div
                     key={domain.domainName}
                     className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-3 text-xs"
                   >
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-start justify-between gap-2 sm:items-center">
                       <span
-                        className="rounded-full px-2 py-0.5 text-[11px] font-medium text-emerald-900"
+                        className="rounded-full px-2 py-0.5 text-[11px] font-medium text-emerald-900 flex-shrink-0"
                         style={{
                           backgroundColor: `rgba(16, 185, 129, ${
                             0.18 + domain.consistencyScore * 0.52
@@ -1107,11 +1107,11 @@ export default function HistoryPage() {
                       >
                         {domain.domainName}
                       </span>
-                      <span className="text-mutedText">
+                      <span className="text-mutedText font-medium flex-shrink-0">
                         {Math.round(domain.avg * 100)}%
                       </span>
                     </div>
-                    <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-mutedText">
+                    <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] text-mutedText">
                       <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5">
                         {domain.consistency}
                       </span>
