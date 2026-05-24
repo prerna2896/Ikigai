@@ -125,7 +125,7 @@ body {
   border-color: var(--border-strong);
 }
 
-/* Rotating concentric circles animation */
+/* Subtle logo rotation animation */
 @keyframes spin-slow {
   from {
     transform: rotate(0deg);
@@ -135,27 +135,13 @@ body {
   }
 }
 
-@keyframes spin-reverse {
-  from {
-    transform: rotate(360deg);
-  }
-  to {
-    transform: rotate(0deg);
-  }
-}
-
 .animate-spin-slow {
-  animation: spin-slow 20s linear infinite;
-}
-
-.animate-spin-reverse {
-  animation: spin-reverse 15s linear infinite;
+  animation: spin-slow 60s linear infinite;
 }
 
 /* Respect user motion preferences */
 @media (prefers-reduced-motion: reduce) {
-  .animate-spin-slow,
-  .animate-spin-reverse {
+  .animate-spin-slow {
     animation: none;
   }
 }

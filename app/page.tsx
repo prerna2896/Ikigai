@@ -240,34 +240,34 @@ function NoOnboarding() {
         className="brand-mark-dark h-32 w-32"
       />
       <div className="relative">
-        {/* Rotating concentric circles animation */}
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="relative h-40 w-40">
-            {/* Outer circle */}
-            <div className="absolute inset-0 rounded-full border border-accent/20 animate-spin-slow"></div>
-            {/* Middle circle */}
-            <div className="absolute inset-4 rounded-full border border-accent/30 animate-spin-reverse"></div>
-            {/* Inner circle */}
-            <div className="absolute inset-8 rounded-full border border-accent/40 animate-spin-slow"></div>
-            {/* Center dot */}
-            <div className="absolute inset-16 rounded-full bg-accent/60 animate-pulse"></div>
-          </div>
-        </div>
-
-        <h1 className="relative font-serif text-5xl font-semibold tracking-tight text-text">
-          Ikigai
-        </h1>
+        <Image
+          src="/brand/mark-light.png"
+          alt=""
+          aria-hidden
+          width={128}
+          height={128}
+          priority
+          className="brand-mark-light h-32 w-32 animate-spin-slow"
+        />
+        <Image
+          src="/brand/mark-dark.png"
+          alt=""
+          aria-hidden
+          width={128}
+          height={128}
+          priority
+          className="brand-mark-dark h-32 w-32 animate-spin-slow"
+        />
       </div>
 
-      <div className="space-y-3 text-center">
-        <p className="max-w-xl text-base text-mutedText">
-          A quiet space to notice how you spend your time, and whether it aligns
-          with what matters to you.
-        </p>
-        <p className="text-lg font-medium text-accent">
-          Discover your Ikigai
-        </p>
-      </div>
+      <h1 className="font-serif text-5xl font-semibold tracking-tight text-text">
+        Ikigai
+      </h1>
+
+      <p className="max-w-xl text-base text-mutedText">
+        A quiet space to notice how you spend your time, and whether it aligns
+        with what matters to you. Discover your Ikigai.
+      </p>
       <Link
         href="/onboarding/context"
         className="inline-flex items-center gap-2 rounded-xl bg-accent px-6 py-3 text-base font-medium text-white shadow-sm transition-opacity hover:opacity-90"
