@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { type Profile } from '@ikigai/core';
 import { getLocalRepository } from '@ikigai/storage';
 import { OnboardingProgress } from '../../../components/OnboardingProgress';
+import OnboardingMonk from '../../../components/OnboardingMonk';
 
 type GoalEntry = {
   text: string;
@@ -119,28 +120,31 @@ export default function OnboardingGoalsPage() {
 
   return (
     <main
-      className="mx-auto flex min-h-screen max-w-3xl flex-col gap-8 px-6 pb-12 pt-16"
+      className="mx-auto flex min-h-screen max-w-4xl flex-col gap-3 px-4 pb-4 pt-4"
       data-testid="onboarding-goals"
     >
       <OnboardingProgress step={4} total={5} label="Domains" />
 
-      <header className="space-y-3">
-        <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
-          Life Areas & Goals
-        </p>
-        <h1 className="text-3xl font-semibold text-text">
-          What areas matter most to you?
-        </h1>
-        <p className="text-sm text-mutedText">
-          Pick any that feel relevant right now. You can always change these
-          later.
-        </p>
-        {status ? (
-          <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
-            {status}
-          </div>
-        ) : null}
-      </header>
+      <div className="grid md:grid-cols-2 gap-3 items-start">
+        {/* Main Content */}
+        <div className="space-y-4">
+          <header className="space-y-2">
+            <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
+              Life Areas & Goals
+            </p>
+            <h1 className="text-2xl font-semibold text-text">
+              What areas matter most to you?
+            </h1>
+            <p className="text-sm text-mutedText">
+              Pick any that feel relevant right now. You can always change these
+              later.
+            </p>
+            {status ? (
+              <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+                {status}
+              </div>
+            ) : null}
+          </header>
 
       <section className="rounded-2xl border border-slate-200 bg-surface p-6 shadow-sm">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -260,6 +264,18 @@ export default function OnboardingGoalsPage() {
           ) : null}
         </div>
       </section>
+        </div>
+
+        {/* Kenji Guide */}
+        <div className="flex justify-center md:justify-start">
+          <OnboardingMonk
+            step="goals"
+            size={140}
+            message="Choose what resonates with you right now. Goals can always evolve."
+            
+          />
+        </div>
+      </div>
 
       <footer className="flex items-center justify-between">
         <button

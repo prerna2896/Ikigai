@@ -6,6 +6,8 @@ import { getBufferPercentForStrictness, type Settings } from '@ikigai/core';
 import { getLocalRepository } from '@ikigai/storage';
 import { settingsSteps } from './onboardingConfig';
 import { OnboardingProgress } from '../../../components/OnboardingProgress';
+import OnboardingMonk from '../../../components/OnboardingMonk';
+import { OnboardingH1, OnboardingBody, OnboardingLabel } from '../../../components/OnboardingTypography';
 
 type WeeklyCapacityMode = 'auto' | 'custom';
 
@@ -178,385 +180,377 @@ function OnboardingSettingsContent() {
   };
 
   return (
-    <main
-      className="mx-auto flex min-h-screen max-w-3xl flex-col gap-8 px-6 py-12"
-      data-testid="onboarding-settings"
-    >
-      <OnboardingProgress step={5} total={5} label="Settings" />
-      <header className="space-y-3">
-        <h1 className="font-serif text-3xl font-semibold text-text">{activeStep.title}</h1>
-        {activeStep.helper ? (
-          <p className="text-sm text-mutedText">{activeStep.helper}</p>
-        ) : null}
-        {status ? (
-          <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
-            {status}
-          </div>
-        ) : null}
-      </header>
-
-      <section className="rounded-2xl border border-slate-200 bg-surface p-6 shadow-sm">
-        {activeStep.id === 'weekly_structure' ? (
-          <div className="flex flex-col gap-6">
-            <div className="flex flex-col gap-3">
-              <p className="text-sm text-mutedText">
-                How structured do you want your planning to be right now?
-              </p>
-              {strictnessOptions.map((option) => (
-                <label
-                  key={option}
-                  className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-text"
-                >
-                  <input
-                    type="radio"
-                    name="strictness"
-                    value={option}
-                    checked={strictness === option}
-                    onChange={() => setStrictness(option)}
-                    data-testid={`settings-strictness-${option}`}
-                  />
-                  <span className="font-medium">
-                    {option.replace('_', ' ')}
-                  </span>
-                  <span className="ml-auto text-mutedText">
-                    {getBufferPercentForStrictness(option)}% buffer
-                  </span>
-                </label>
-              ))}
-              <p className="text-xs text-mutedText">
-                This only affects how much buffer we keep.
-              </p>
-            </div>
-            <label className="flex flex-col gap-2 text-sm text-mutedText">
-              When should your week start?
-              <select
-                className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-text"
-                value={weekStartDay}
-                onChange={(event) =>
-                  setWeekStartDay(event.target.value as Settings['weekStartDay'])
-                }
-              >
-                <option value="sunday">Sunday</option>
-                <option value="monday">Monday</option>
-                <option value="tuesday">Tuesday</option>
-                <option value="wednesday">Wednesday</option>
-                <option value="thursday">Thursday</option>
-                <option value="friday">Friday</option>
-                <option value="saturday">Saturday</option>
-              </select>
-              <span className="text-xs text-mutedText">Weeks reset at 12:00 AM.</span>
-            </label>
-          </div>
-        ) : null}
-
-        {activeStep.id === 'weekly_capacity' ? (
-          <div className="flex flex-col gap-6">
-            <label className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-text">
-              <div className="flex items-center gap-3">
-                <input
-                  type="radio"
-                  name="weekly-capacity"
-                  value="auto"
-                  checked={weeklyCapacityMode === 'auto'}
-                  onChange={() => setWeeklyCapacityMode('auto')}
-                />
-                <span className="font-medium">Use buffered week</span>
-              </div>
-              <span className="text-mutedText">
-                {availableAfterBuffer}h
-                <span className="ml-2">
-                  {availableAfterBuffer > 0 ? '(100%)' : '(0%)'}
-                </span>
-              </span>
-            </label>
-            <label className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-text">
-              <div className="flex items-center gap-3">
-                <input
-                  type="radio"
-                  name="weekly-capacity"
-                  value="custom"
-                  checked={weeklyCapacityMode === 'custom'}
-                  onChange={() => setWeeklyCapacityMode('custom')}
-                />
-                <span className="font-medium">Choose hours to plan</span>
-              </div>
-              <span className="text-mutedText">
-                {weeklyCapacityHours}h
-                <span className="ml-2">
-                  {availableAfterBuffer > 0
-                    ? `(${Math.round(
-                        (weeklyCapacityHours / availableAfterBuffer) * 100,
-                      )}%)`
-                    : '(0%)'}
-                </span>
-              </span>
-            </label>
-            <div className="flex flex-col gap-3 text-sm text-mutedText">
-              <div className="flex items-center justify-between">
-                <span>Hours to plan</span>
-                <span className="text-text">{weeklyCapacityHours}h</span>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={totalWeekHours}
-                step={1}
-                className="w-full accent-[var(--accent)]"
-                value={weeklyCapacityHours}
-                disabled={weeklyCapacityMode !== 'custom'}
-                onChange={(event) => {
-                  setWeeklyCapacityMode('custom');
-                  setWeeklyCapacityHours(
-                    Number(event.target.value.replace(/^0+(?=\\d)/, '')),
-                  );
-                }}
-              />
-              <div className="flex items-center justify-between text-xs text-mutedText">
-                <span>0h</span>
-                <span>{totalWeekHours}h</span>
-              </div>
-            </div>
-            {preferredPercent !== null ? (
-              <p className="text-xs text-mutedText">
-                That’s roughly {preferredPercent}% of your buffered week.
-              </p>
-            ) : null}
-            <details className="rounded-xl border border-slate-200 bg-white p-4 text-sm">
-              <summary className="cursor-pointer text-sm text-mutedText">
-                How this is calculated
-              </summary>
-              <div className="mt-3 space-y-2 text-sm">
-                <p className="text-xs text-mutedText">
-                  This step starts with the full week, then applies your buffer.
-                </p>
-                <div className="flex items-center justify-between">
-                  <span className="text-mutedText">Total in a week</span>
-                  <span className="text-text">{totalWeekHours}h</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-mutedText">
-                    Buffer ({bufferPercent}%)
-                  </span>
-                  <span className="text-text">
-                    -{Math.round((totalWeekHours * bufferPercent) / 100)}h
-                  </span>
-                </div>
-                <div className="flex items-center justify-between font-medium">
-                  <span className="text-mutedText">Available after buffer</span>
-                  <span className="text-text">{availableAfterBuffer}h</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-mutedText">Preference (hours to plan)</span>
-                  <span className="text-text">{weeklyCapacityHours}h</span>
-                </div>
-                {preferredPercent !== null ? (
-                  <div className="flex items-center justify-between">
-                    <span className="text-mutedText">Share of available time</span>
-                    <span className="text-text">{preferredPercent}%</span>
-                  </div>
-                ) : null}
-              </div>
-            </details>
-          </div>
-        ) : null}
-
-
-        {activeStep.id === 'commitments' ? (
-          <div className="flex flex-col gap-4">
-            <label className="flex flex-col gap-2 text-sm text-mutedText">
-              What best describes your current situation?
-              <select
-                className="rounded-xl border border-slate-200 px-3 py-2 text-text"
-                value={professionType}
-                onChange={(event) => {
-                  const nextType = event.target.value as Settings['professionType'];
-                  setProfessionType(nextType);
-                  if (nextType === 'student') {
-                    setClassHoursPerWeek((prev) => (prev === 0 ? 15 : prev));
-                    setJobHoursPerWeek(0);
-                  } else {
-                    setJobHoursPerWeek((prev) => (prev === 0 ? 40 : prev));
-                    setClassHoursPerWeek(0);
-                  }
-                  if (nextType !== 'other' && nextType !== 'caregiver') {
-                    setProfessionOtherText('');
-                  }
-                }}
-                data-testid="settings-profession-select"
-              >
-                {professionOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {professionType === 'other' || professionType === 'caregiver' ? (
-              <label className="flex flex-col gap-2 text-sm text-mutedText">
-                Optional: describe in a few words
-                <input
-                  type="text"
-                  className="rounded-xl border border-slate-200 px-3 py-2 text-text"
-                  value={professionOtherText}
-                  onChange={(event) => setProfessionOtherText(event.target.value)}
-                  data-testid="settings-profession-other"
-                />
-              </label>
-            ) : null}
-            {professionType === 'student' ? (
-              <label className="flex flex-col gap-2 text-sm text-mutedText">
-                About how many hours per week are classes or scheduled study?
-                <input
-                  type="number"
-                  min={0}
-                  max={80}
-                  className="rounded-xl border border-slate-200 px-3 py-2 text-text"
-                  value={classHoursPerWeek}
-                  onChange={(event) =>
-                    setClassHoursPerWeek(
-                      Number(event.target.value.replace(/^0+(?=\\d)/, '')),
-                    )
-                  }
-                  onFocus={(event) => {
-                    if (classHoursPerWeek === 0) {
-                      setClassHoursPerWeek(15);
-                    }
-                    event.currentTarget.select();
-                  }}
-                  data-testid="settings-class-hours"
-                />
-                {classHoursPerWeek > 80 ? (
-                  <span className="text-xs text-mutedText">
-                    That seems high — but you can keep it if it’s accurate.
-                  </span>
-                ) : null}
-              </label>
-            ) : (
-              <label className="flex flex-col gap-2 text-sm text-mutedText">
-                {professionType === 'caregiver'
-                  ? `About how many hours per week are dedicated to ${
-                      professionOtherText.trim() || 'caregiving'
-                    }?`
-                  : 'About how many hours per week do you want to reserve for it?'}
-                <input
-                  type="number"
-                  min={0}
-                  max={80}
-                  className="rounded-xl border border-slate-200 px-3 py-2 text-text"
-                  value={jobHoursPerWeek}
-                  onChange={(event) =>
-                    setJobHoursPerWeek(
-                      Number(event.target.value.replace(/^0+(?=\\d)/, '')),
-                    )
-                  }
-                  onFocus={(event) => {
-                    if (jobHoursPerWeek === 0) {
-                      setJobHoursPerWeek(40);
-                    }
-                    event.currentTarget.select();
-                  }}
-                  data-testid="settings-job-hours"
-                />
-                {jobHoursPerWeek > 80 ? (
-                  <span className="text-xs text-mutedText">
-                    That seems high — but you can keep it if it’s accurate.
-                  </span>
-                ) : null}
-              </label>
-            )}
-            <p className="text-xs text-mutedText">A rough estimate is enough.</p>
-          </div>
-        ) : null}
-
-        {activeStep.id === 'daily_baselines' ? (
-          <div className="grid gap-4 md:grid-cols-2">
-            <label className="flex flex-col gap-2 text-sm text-mutedText">
-              Sleep per day (hours)
-                <input
-                  type="number"
-                  min={0}
-                  className="rounded-xl border border-slate-200 px-3 py-2 text-text"
-                  value={sleepHoursPerDay}
-                  onChange={(event) =>
-                    setSleepHoursPerDay(
-                      Number(event.target.value.replace(/^0+(?=\\d)/, '')),
-                    )
-                  }
-                  onFocus={(event) => event.currentTarget.select()}
-                  data-testid="settings-sleep-hours"
-                />
-            </label>
-            <label className="flex flex-col gap-2 text-sm text-mutedText">
-              Daily maintenance (hours)
-                <input
-                  type="number"
-                  min={0}
-                  className="rounded-xl border border-slate-200 px-3 py-2 text-text"
-                  value={maintenanceHoursPerDay}
-                  onChange={(event) =>
-                    setMaintenanceHoursPerDay(
-                      Number(event.target.value.replace(/^0+(?=\\d)/, '')),
-                    )
-                  }
-                  onFocus={(event) => event.currentTarget.select()}
-                  data-testid="settings-maintenance-hours"
-                />
-            </label>
-          </div>
-        ) : null}
-      </section>
-
-      <footer className="flex items-center justify-between text-sm">
-        <button
-          type="button"
-          className="rounded-full border border-slate-300 px-4 py-2 text-text"
-          onClick={handleBack}
-          data-testid="onboarding-back"
-        >
-          Back
-        </button>
-        <div className="text-mutedText" data-testid="onboarding-settings-step">
-          Step {activeStepIndex + 1} of {settingsSteps.length}
+    <div className="min-h-screen flex items-start justify-center p-4 pb-24 md:pb-4 pt-8">
+      <main
+        className="w-full max-w-5xl mx-auto"
+        data-testid="onboarding-settings"
+      >
+        {/* Progress */}
+        <div className="mb-6">
+          <OnboardingProgress step={5} total={5} label="Settings" />
         </div>
-        {isLastStep ? (
+
+        {/* Main Content Area */}
+        <div className="space-y-6 max-w-2xl mx-auto mb-8">
+          <header className="text-center space-y-2">
+            <OnboardingH1>{activeStep.title}</OnboardingH1>
+            {activeStep.helper && (
+              <OnboardingBody>{activeStep.helper}</OnboardingBody>
+            )}
+            {status && (
+              <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 mt-3">
+                <OnboardingBody className="text-rose-700">{status}</OnboardingBody>
+              </div>
+            )}
+          </header>
+
+            {/* Step Content */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+              {activeStep.id === 'commitments' && (
+                <div className="space-y-6">
+                  <div className="space-y-4">
+                    <OnboardingLabel className="font-medium">
+                      What describes you best?
+                    </OnboardingLabel>
+                    <div className="space-y-2">
+                      {professionOptions.map((option) => (
+                        <label
+                          key={option.value}
+                          className={`flex items-center space-x-3 p-4 rounded-xl border cursor-pointer transition-colors ${
+                            professionType === option.value
+                              ? 'border-accent bg-accent/5'
+                              : 'border-slate-200 hover:border-slate-300'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="professionType"
+                            value={option.value}
+                            checked={professionType === option.value}
+                            onChange={(e) =>
+                              setProfessionType(
+                                e.target.value as Settings['professionType']
+                              )
+                            }
+                            className="w-4 h-4 text-accent"
+                          />
+                          <span className="font-medium">{option.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  {professionType === 'other' && (
+                    <div className="space-y-3">
+                      <OnboardingLabel className="font-medium">
+                        Please specify
+                      </OnboardingLabel>
+                      <input
+                        type="text"
+                        className="settings-input"
+                        value={professionOtherText}
+                        onChange={(e) => setProfessionOtherText(e.target.value)}
+                        placeholder="Your situation..."
+                      />
+                    </div>
+                  )}
+
+                  {professionType !== 'student' &&
+                    professionType !== 'looking_for_work' &&
+                    professionType !== 'break_sabbatical' && (
+                      <div className="space-y-3">
+                        <OnboardingLabel className="font-medium">
+                          Hours per week at work
+                        </OnboardingLabel>
+                        <input
+                          type="number"
+                          min="0"
+                          max="168"
+                          style={{
+                            width: '100%',
+                            minHeight: '48px',
+                            padding: '12px 16px',
+                            fontSize: '16px',
+                            borderRadius: '12px',
+                            border: '1px solid #e2e8f0',
+                            backgroundColor: '#ffffff'
+                          }}
+                          className="text-text focus:border-accent focus:ring-2 focus:ring-accent/20 outline-none transition-colors"
+                          value={jobHoursPerWeek}
+                          onChange={(e) =>
+                            setJobHoursPerWeek(Number(e.target.value))
+                          }
+                        />
+                      </div>
+                    )}
+
+                  {professionType === 'student' && (
+                    <div className="space-y-3">
+                      <OnboardingLabel className="font-medium">
+                        Hours per week in class
+                      </OnboardingLabel>
+                      <input
+                        type="number"
+                        min="0"
+                        max="168"
+                        className="settings-input"
+                        value={classHoursPerWeek}
+                        onChange={(e) =>
+                          setClassHoursPerWeek(Number(e.target.value))
+                        }
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeStep.id === 'daily_baselines' && (
+                <div className="space-y-6">
+                  <div className="space-y-3">
+                    <OnboardingLabel className="font-medium">
+                      Sleep hours per day
+                    </OnboardingLabel>
+                    <input
+                      type="number"
+                      min="0"
+                      max="24"
+                      step="0.5"
+                      className="settings-input"
+                      value={sleepHoursPerDay}
+                      onChange={(e) =>
+                        setSleepHoursPerDay(Number(e.target.value))
+                      }
+                    />
+                    <p className="text-xs text-mutedText">
+                      The amount you actually need, not what you&apos;d like.
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <OnboardingLabel className="font-medium">
+                      Daily maintenance hours
+                    </OnboardingLabel>
+                    <input
+                      type="number"
+                      min="0"
+                      max="12"
+                      step="0.5"
+                      className="settings-input"
+                      value={maintenanceHoursPerDay}
+                      onChange={(e) =>
+                        setMaintenanceHoursPerDay(Number(e.target.value))
+                      }
+                    />
+                    <p className="text-xs text-mutedText">
+                      Meals, chores, commuting, getting ready.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {activeStep.id === 'weekly_structure' && (
+                <div className="space-y-6">
+                  <div className="space-y-4">
+                    <OnboardingLabel className="font-medium">
+                      How structured should planning feel?
+                    </OnboardingLabel>
+                    <div className="space-y-2">
+                      {strictnessOptions.map((option) => (
+                        <label
+                          key={option}
+                          className={`flex items-center justify-between p-4 rounded-xl border cursor-pointer transition-colors ${
+                            strictness === option
+                              ? 'border-accent bg-accent/5'
+                              : 'border-slate-200 hover:border-slate-300'
+                          }`}
+                        >
+                          <div className="flex items-center space-x-3">
+                            <input
+                              type="radio"
+                              name="strictness"
+                              value={option}
+                              checked={strictness === option}
+                              onChange={() => setStrictness(option)}
+                              data-testid={`settings-strictness-${option}`}
+                              className="w-4 h-4 text-accent"
+                            />
+                            <span className="font-medium capitalize">
+                              {option.replace('_', ' ')}
+                            </span>
+                          </div>
+                          <span className="text-sm text-mutedText">
+                            {getBufferPercentForStrictness(option)}% buffer
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                    <p className="text-xs text-mutedText">
+                      This affects how much buffer time we keep aside for
+                      unexpected things.
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <OnboardingLabel className="font-medium">
+                      When should your week start?
+                    </OnboardingLabel>
+                    <select
+                      className="settings-input"
+                      value={weekStartDay}
+                      onChange={(event) =>
+                        setWeekStartDay(
+                          event.target.value as Settings['weekStartDay']
+                        )
+                      }
+                    >
+                      <option value="sunday">Sunday</option>
+                      <option value="monday">Monday</option>
+                      <option value="tuesday">Tuesday</option>
+                      <option value="wednesday">Wednesday</option>
+                      <option value="thursday">Thursday</option>
+                      <option value="friday">Friday</option>
+                      <option value="saturday">Saturday</option>
+                    </select>
+                    <p className="text-xs text-mutedText">
+                      Weeks reset at 12:00 AM.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {activeStep.id === 'weekly_capacity' && (
+                <div className="space-y-6">
+                  <div className="space-y-4">
+                    <OnboardingLabel className="font-medium">
+                      Weekly capacity mode
+                    </OnboardingLabel>
+                    <div className="space-y-2">
+                      <label className="flex items-center space-x-3 p-4 rounded-xl border cursor-pointer transition-colors border-slate-200 hover:border-slate-300">
+                        <input
+                          type="radio"
+                          name="weeklyCapacityMode"
+                          value="auto"
+                          checked={weeklyCapacityMode === 'auto'}
+                          onChange={() => setWeeklyCapacityMode('auto')}
+                          className="w-4 h-4 text-accent"
+                        />
+                        <div>
+                          <div className="font-medium">Auto</div>
+                          <div className="text-sm text-mutedText">
+                            Use available hours after buffer ({availableAfterBuffer}h)
+                          </div>
+                        </div>
+                      </label>
+                      <label className="flex items-center space-x-3 p-4 rounded-xl border cursor-pointer transition-colors border-slate-200 hover:border-slate-300">
+                        <input
+                          type="radio"
+                          name="weeklyCapacityMode"
+                          value="custom"
+                          checked={weeklyCapacityMode === 'custom'}
+                          onChange={() => setWeeklyCapacityMode('custom')}
+                          className="w-4 h-4 text-accent"
+                        />
+                        <div>
+                          <div className="font-medium">Custom</div>
+                          <div className="text-sm text-mutedText">
+                            Set your own target hours
+                          </div>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+
+                  {weeklyCapacityMode === 'custom' && (
+                    <div className="space-y-3">
+                      <OnboardingLabel className="font-medium">
+                        Target hours per week
+                      </OnboardingLabel>
+                      <input
+                        type="number"
+                        min="1"
+                        max={availableAfterBuffer}
+                        className="settings-input"
+                        value={weeklyCapacityHours}
+                        onChange={(e) =>
+                          setWeeklyCapacityHours(Number(e.target.value))
+                        }
+                      />
+                      {preferredPercent !== null && (
+                        <p className="text-xs text-mutedText">
+                          That&apos;s about {preferredPercent}% of your available time
+                          after buffer.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <div className="text-sm">
+                      <div className="font-medium text-blue-900 mb-1">
+                        Current breakdown:
+                      </div>
+                      <div className="text-blue-800 space-y-1 text-xs">
+                        <div>Total week: 168 hours</div>
+                        <div>
+                          Buffer ({bufferPercent}%): ~
+                          {Math.round(totalWeekHours * (bufferPercent / 100))}h
+                        </div>
+                        <div>Available: {availableAfterBuffer}h</div>
+                        <div>Your target: {weeklyCapacityHours}h</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+          {/* Inline Kenji */}
+          <div className="flex justify-center pt-4">
+            <OnboardingMonk
+              step="settings"
+              size={100}
+              
+            />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <footer className="sticky bottom-0 -mx-4 md:mx-0 md:static bg-bg/95 backdrop-blur border-t border-slate-200 md:border-0 px-4 py-3 md:p-0 mt-8 flex items-center justify-between text-sm">
           <button
             type="button"
-            className="rounded-full bg-accent px-5 py-2 font-medium text-white"
-            onClick={() => void handleComplete()}
-            disabled={!repository}
-            data-testid="onboarding-finish"
+            className="rounded-full border border-slate-300 px-6 py-3 min-h-12 text-sm text-text hover:bg-slate-50 transition-colors"
+            onClick={handleBack}
+            data-testid="onboarding-back"
           >
-            Finish setup
+            ← Back
           </button>
-        ) : (
-          <div className="flex items-center gap-3">
-            {activeStep.id === 'weekly_capacity' ? (
-              <button
-                type="button"
-                className="rounded-full border border-slate-300 px-4 py-2 text-text"
-                onClick={() => {
-                  setWeeklyCapacityMode('auto');
-                  setWeeklyCapacityHours(availableAfterBuffer);
-                  handleNext();
-                }}
-                disabled={!repository}
-              >
-                Skip for now
-              </button>
-            ) : null}
+          <OnboardingBody className="text-xs font-medium" data-testid="onboarding-settings-step">
+            Step {activeStepIndex + 1} of {settingsSteps.length}
+          </OnboardingBody>
+          {isLastStep ? (
             <button
               type="button"
-              className="rounded-full bg-accent px-5 py-2 font-medium text-white"
+              className="rounded-full bg-accent px-6 py-3 min-h-12 text-sm font-medium text-white hover:bg-accent/90 transition-colors"
+              onClick={() => void handleComplete()}
+              disabled={!repository}
+              data-testid="onboarding-finish"
+            >
+              Finish setup
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="rounded-full bg-accent px-6 py-3 min-h-12 text-sm font-medium text-white hover:bg-accent/90 transition-colors"
               onClick={handleNext}
               disabled={!repository}
               data-testid="onboarding-next"
             >
               Continue
             </button>
-          </div>
-        )}
-      </footer>
-    </main>
+          )}
+        </footer>
+      </main>
+    </div>
   );
 }
 
