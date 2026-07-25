@@ -199,6 +199,7 @@ function ReflectPageContent() {
       await refreshLatestNotes(latestWeek);
       setJustSavedId(newNote.id);
       setDraft('');
+      closeModal();
     } catch (err) {
       setError(String(err));
     } finally {
