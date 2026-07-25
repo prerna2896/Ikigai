@@ -6,7 +6,12 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   expect: {
     timeout: 5_000,
+    toHaveScreenshot: {
+      maxDiffPixelRatio: 0.02,
+      threshold: 0.1,
+    },
   },
+  snapshotPathTemplate: 'tests/e2e/snapshots/{testFilePath}/{arg}{ext}',
   use: {
     baseURL: 'http://localhost:3000',
     headless: true,
