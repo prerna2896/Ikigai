@@ -32,7 +32,7 @@ const STEP_CONFIGS: Record<OnboardingStep, StepConfig> = {
   },
   tone: {
     mood: 'calm',
-    message: "Each option creates a different feeling. What matches your natural rhythm?",
+    message: "There's no right choice. This just helps set the tone and identify what you're looking for.",
     supportiveMessages: [
       "Some prefer gentle guidance, others direct insight. Both paths lead to wisdom.",
       "Your comfort matters - let's find what works for you.",
@@ -59,7 +59,7 @@ const STEP_CONFIGS: Record<OnboardingStep, StepConfig> = {
   },
   settings: {
     mood: 'calm',
-    message: "Almost there! Let's set up your preferences so your practice feels just right.",
+    message: "A few quick questions about your schedule — this helps us figure out how much time you actually have each week.",
     supportiveMessages: [
       "These small details make a big difference in your daily practice.",
       "You can always adjust these later as you discover what works.",
