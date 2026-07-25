@@ -89,8 +89,11 @@ function OnboardingSettingsContent() {
             return;
           }
           setWeeklyCapacityHours(settings.weeklyCapacityHours);
+          // Treat as auto if the stored value matches derived, or if it's
+          // still the hardcoded default (40h) meaning the user hasn't set it yet.
           const isAuto =
-            settings.weeklyCapacityHours === settings.weeklyCapacityHoursDerived;
+            settings.weeklyCapacityHours === settings.weeklyCapacityHoursDerived ||
+            settings.weeklyCapacityHours === 40;
           setWeeklyCapacityMode(isAuto ? 'auto' : 'custom');
           setStrictness(settings.strictness);
           setSleepHoursPerDay(settings.sleepHoursPerDay);
@@ -141,7 +144,7 @@ function OnboardingSettingsContent() {
   const handleBack = () => {
     setActiveStepIndex((prev) => {
       if (prev <= 0) {
-        router.push('/');
+        router.push('/onboarding/reflection?q=4');
         return prev;
       }
       return prev - 1;
@@ -276,7 +279,7 @@ function OnboardingSettingsContent() {
                             backgroundColor: '#ffffff'
                           }}
                           className="text-text focus:border-accent focus:ring-2 focus:ring-accent/20 outline-none transition-colors"
-                          value={jobHoursPerWeek}
+                          value={jobHoursPerWeek || ''}
                           onChange={(e) =>
                             setJobHoursPerWeek(Number(e.target.value))
                           }
@@ -294,7 +297,7 @@ function OnboardingSettingsContent() {
                         min="0"
                         max="168"
                         className="settings-input"
-                        value={classHoursPerWeek}
+                        value={classHoursPerWeek || ''}
                         onChange={(e) =>
                           setClassHoursPerWeek(Number(e.target.value))
                         }
@@ -316,7 +319,7 @@ function OnboardingSettingsContent() {
                       max="24"
                       step="0.5"
                       className="settings-input"
-                      value={sleepHoursPerDay}
+                      value={sleepHoursPerDay || ''}
                       onChange={(e) =>
                         setSleepHoursPerDay(Number(e.target.value))
                       }
@@ -336,7 +339,7 @@ function OnboardingSettingsContent() {
                       max="12"
                       step="0.5"
                       className="settings-input"
-                      value={maintenanceHoursPerDay}
+                      value={maintenanceHoursPerDay || ''}
                       onChange={(e) =>
                         setMaintenanceHoursPerDay(Number(e.target.value))
                       }
@@ -470,7 +473,7 @@ function OnboardingSettingsContent() {
                         min="1"
                         max={availableAfterBuffer}
                         className="settings-input"
-                        value={weeklyCapacityHours}
+                        value={weeklyCapacityHours || ''}
                         onChange={(e) =>
                           setWeeklyCapacityHours(Number(e.target.value))
                         }

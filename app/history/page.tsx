@@ -89,34 +89,6 @@ const getDomainColor = (name: string) => {
   return color ?? domainPalette[0];
 };
 
-const seededRatio = (seed: string, min = 0.6, max = 1.1) => {
-  const hash = hashString(seed);
-  const ratio = (hash % 1000) / 1000;
-  return min + ratio * (max - min);
-};
-
-const buildFakeLog = (plan: WeekPlan, seed: string): WeekLogEntry | null => {
-  const taskHours: Record<string, number> = {};
-  const tasks = plan.domains.flatMap((domain) => domain.tasks);
-  if (tasks.length === 0) {
-    return null;
-  }
-  tasks.forEach((task) => {
-    const ratio = seededRatio(`${seed}-${task.id}`);
-    const hours = Math.max(0, Math.round(task.plannedHours * ratio));
-    taskHours[task.id] = hours;
-  });
-  const dateISO = new Date(`${plan.weekEndISO}T18:00:00`).toISOString();
-  return {
-    id: crypto.randomUUID(),
-    weekId: plan.id,
-    dateISO,
-    taskHours,
-    createdAt: dateISO,
-    updatedAt: dateISO,
-  };
-};
-
 const formatRange = (weekPlan: WeekPlan, timeZone: string) => {
   const start = new Date(`${weekPlan.weekStartISO}T00:00:00`);
   const end = new Date(`${weekPlan.weekEndISO}T00:00:00`);
@@ -127,56 +99,6 @@ const formatRange = (weekPlan: WeekPlan, timeZone: string) => {
     timeZone,
   });
   return `${formatter.format(start)} – ${formatter.format(end)}`;
-};
-
-const seedHistoryIfNeeded = async (
-  repo: ReturnType<typeof getLocalRepository>,
-  settingsRecord: Settings,
-  plans: WeekPlan[],
-) => {
-  if (plans.length === 0 || plans.length >= 4) {
-    return;
-  }
-  const sorted = [...plans].sort((a, b) =>
-    a.weekStartISO < b.weekStartISO ? 1 : -1,
-  );
-  const latest = sorted[0];
-  const basePlan = withDerivedPlannedHours(latest);
-  const existingStarts = new Set(plans.map((plan) => plan.weekStartISO));
-  const timeZone = settingsRecord.weekTimeZone || 'UTC';
-  const weekStartDay = settingsRecord.weekStartDay || 'sunday';
-  for (let offset = 1; offset <= 3; offset += 1) {
-    const startISO = addDaysISO(latest.weekStartISO, -7 * offset);
-    if (existingStarts.has(startISO)) {
-      continue;
-    }
-    const endISO = getWeekEndISO(startISO);
-    const createdAtISO = new Date().toISOString();
-    const clonedDomains = basePlan.domains.map((domain) => ({
-      ...domain,
-      tasks: domain.tasks.map((task) => ({ ...task })),
-    }));
-    const plan: WeekPlan = {
-      ...basePlan,
-      id: startISO,
-      weekStartISO: startISO,
-      weekEndISO: endISO,
-      weekStartDay,
-      weekTimeZone: timeZone,
-      createdAtISO,
-      domains: clonedDomains,
-      isFrozen: true,
-    };
-    await repo.saveWeekPlan(plan);
-    const firstLog = buildFakeLog(plan, `seed-${startISO}-a`);
-    const secondLog = buildFakeLog(plan, `seed-${startISO}-b`);
-    if (firstLog) {
-      await repo.saveWeekLog(firstLog);
-    }
-    if (secondLog) {
-      await repo.saveWeekLog(secondLog);
-    }
-  }
 };
 
 export default function HistoryPage() {
@@ -192,8 +114,14 @@ export default function HistoryPage() {
   const [selectedHistoryWeekId, setSelectedHistoryWeekId] = useState<string | null>(
     null,
   );
-  const [rangeStartId, setRangeStartId] = useState<string | null>(null);
-  const [rangeEndId, setRangeEndId] = useState<string | null>(null);
+  const [rangeStartISO, setRangeStartISO] = useState<string | null>(null);
+  const [rangeEndISO, setRangeEndISO] = useState<string | null>(null);
+  const [hoveredSeries, setHoveredSeries] = useState<{
+    x: number;
+    y: number;
+    type: string;
+    value: number;
+  } | null>(null);
 
   useEffect(() => {
     try {
@@ -206,9 +134,29 @@ export default function HistoryPage() {
             setWeekLogsByWeek({});
             return;
           }
-          await seedHistoryIfNeeded(repo, settingsRecord, plans);
-          const refreshedPlans = await repo.listWeekPlans();
-          const sorted = [...refreshedPlans].sort((a, b) =>
+
+          // Remove seeded plans: the seed function spread task objects verbatim
+          // (including their `id` field), so seeded plans share task IDs with
+          // the real current plan. Genuine past plans always use fresh UUIDs.
+          const newest = [...plans].sort((a, b) =>
+            a.weekStartISO < b.weekStartISO ? 1 : -1,
+          )[0];
+          if (newest) {
+            const realTaskIds = new Set(
+              newest.domains.flatMap((d) => d.tasks.map((t) => t.id)),
+            );
+            const seeded = plans.filter(
+              (p) =>
+                p.id !== newest.id &&
+                p.domains.some((d) => d.tasks.some((t) => realTaskIds.has(t.id))),
+            );
+            if (seeded.length > 0) {
+              await Promise.all(seeded.map((p) => repo.deleteWeekPlan(p.id)));
+              plans = plans.filter((p) => !seeded.some((s) => s.id === p.id));
+            }
+          }
+
+          const sorted = [...plans].sort((a, b) =>
             a.weekStartISO < b.weekStartISO ? 1 : -1,
           );
           setWeekPlans(sorted);
@@ -258,7 +206,6 @@ export default function HistoryPage() {
     return weekPlans
       .slice()
       .sort((a, b) => (a.weekStartISO < b.weekStartISO ? 1 : -1))
-      .slice(0, 6)
       .map((plan) => {
         const tasks = plan.domains.flatMap((domain) =>
           domain.tasks.map((task) => ({
@@ -308,17 +255,23 @@ export default function HistoryPage() {
 
   useEffect(() => {
     if (!historySummaries.length) {
-      setRangeStartId(null);
-      setRangeEndId(null);
+      setRangeStartISO(null);
+      setRangeEndISO(null);
       return;
     }
-    setRangeStartId((prev) => prev ?? historySummaries[historySummaries.length - 1].weekId);
-    setRangeEndId((prev) => prev ?? historySummaries[0].weekId);
+    setRangeEndISO((prev) => prev ?? historySummaries[0].weekId);
+    setRangeStartISO((prev) => {
+      if (prev) return prev;
+      // default: 4 weeks back from the most recent week
+      const newest = historySummaries[0].weekId;
+      return addDaysISO(newest, -21);
+    });
   }, [historySummaries]);
 
-  const orderedSummariesAsc = useMemo(() => {
-    return historySummaries.slice().reverse();
-  }, [historySummaries]);
+  const orderedSummariesAsc = useMemo(
+    () => historySummaries.slice().reverse(),
+    [historySummaries],
+  );
 
   const selectedSummary = useMemo(() => {
     if (!selectedHistoryWeekId) {
@@ -525,21 +478,19 @@ export default function HistoryPage() {
   }, [selectedSummary]);
 
   const weeklySeries = useMemo(() => {
-    const ordered = historySummaries.slice().reverse();
-    const startIndex = rangeStartId
-      ? ordered.findIndex((summary) => summary.weekId === rangeStartId)
-      : 0;
-    const endIndex = rangeEndId
-      ? ordered.findIndex((summary) => summary.weekId === rangeEndId)
-      : ordered.length - 1;
-    const from = Math.max(0, Math.min(startIndex, endIndex));
-    const to = Math.max(0, Math.max(startIndex, endIndex));
-    const sliced = ordered.slice(from, to + 1);
-    const points = sliced.map((summary, index) => ({
+    const ordered = historySummaries.slice().reverse(); // oldest first
+    const filtered = ordered.filter((s) => {
+      if (rangeStartISO && s.weekId < rangeStartISO) return false;
+      if (rangeEndISO && s.weekId > rangeEndISO) return false;
+      return true;
+    });
+    const points = filtered.map((summary, index) => ({
       index,
       label: summary.rangeLabel,
+      weekId: summary.weekId,
       planned: summary.plannedTotal,
       completed: summary.completedTotal,
+      hasLogs: (weekLogsByWeek[summary.weekId]?.length ?? 0) > 0,
     }));
     const totalWeekHours = 168;
     const baselineAvailable = settings
@@ -555,7 +506,7 @@ export default function HistoryPage() {
       totalWeekHours,
     );
     return { points, maxHours, totalWeekHours, baselineAvailable };
-  }, [historySummaries, settings, rangeStartId, rangeEndId]);
+  }, [historySummaries, weekLogsByWeek, settings, rangeStartISO, rangeEndISO]);
 
   const mostOvercommitted = useMemo(() => {
     return domainInsights
@@ -579,6 +530,13 @@ export default function HistoryPage() {
       })
       .filter((entry) => entry.notes.length > 0);
   }, [weekPlans, notesByWeek]);
+
+  const selectedWeekNotes = useMemo(() => {
+    if (!selectedSummary) return [];
+    return (notesByWeek[selectedSummary.weekId] ?? [])
+      .map(decodeReflectionNote)
+      .filter((n) => n.text.trim().length > 0 || Boolean(n.emoji));
+  }, [selectedSummary, notesByWeek]);
 
   return (
     <main
@@ -658,263 +616,243 @@ export default function HistoryPage() {
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-surface p-4 sm:p-6 shadow-sm">
-        <div className="grid gap-4 sm:gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="space-y-4 sm:space-y-6">
-            <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <h2 className="text-sm font-semibold text-text">
-                  Weekly time series
-                </h2>
-                <div className="flex flex-wrap items-center gap-2 text-xs text-mutedText">
-                  <label className="flex items-center gap-2">
-                    <span>From</span>
-                    <input
-                      type="date"
-                      className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-text"
-                      value={toDateInputValue(rangeStartId)}
-                      onChange={(event) => {
-                        const value = event.target.value;
-                        if (!value) {
-                          return;
-                        }
-                        const weekStart = getWeekStartISOForDate(
-                          new Date(`${value}T00:00:00`),
-                          settings?.weekStartDay || 'sunday',
-                        );
-                        const match =
-                          [...orderedSummariesAsc]
-                            .reverse()
-                            .find((summary) => summary.weekId <= weekStart) ??
-                          orderedSummariesAsc[0];
-                        setRangeStartId(match?.weekId ?? null);
-                      }}
-                    />
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <span>To</span>
-                    <input
-                      type="date"
-                      className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-text"
-                      value={toDateInputValue(rangeEndId)}
-                      onChange={(event) => {
-                        const value = event.target.value;
-                        if (!value) {
-                          return;
-                        }
-                        const weekStart = getWeekStartISOForDate(
-                          new Date(`${value}T00:00:00`),
-                          settings?.weekStartDay || 'sunday',
-                        );
-                        const match =
-                          orderedSummariesAsc.find(
-                            (summary) => summary.weekId >= weekStart,
-                          ) ?? orderedSummariesAsc[orderedSummariesAsc.length - 1];
-                        setRangeEndId(match?.weekId ?? null);
-                      }}
-                    />
-                  </label>
-                </div>
-              </div>
-              <p className="mt-1 text-xs text-mutedText">
-                Planned vs. completed hours across the past weeks.
-              </p>
-              {weeklySeries.points.length ? (
-                <>
-                  <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 p-3">
-                    <svg
-                      viewBox="0 0 520 180"
-                      className="h-40 w-full"
-                      role="img"
-                      aria-label="Weekly planned versus completed hours"
-                    >
-                      <defs>
-                        <linearGradient id="plannedLine" x1="0" x2="1">
-                          <stop offset="0%" stopColor="#a7b8b3" />
-                          <stop offset="100%" stopColor="#7f9f97" />
-                        </linearGradient>
-                        <linearGradient id="completedLine" x1="0" x2="1">
-                          <stop offset="0%" stopColor="#7c8aa5" />
-                          <stop offset="100%" stopColor="#5f6f8f" />
-                        </linearGradient>
-                      </defs>
-                      {(() => {
-                        const paddingX = 28;
-                        const paddingY = 20;
-                        const width = 520 - paddingX * 2;
-                        const height = 180 - paddingY * 2;
-                        const maxValue = Math.max(weeklySeries.maxHours, 1);
-                        const step =
-                          weeklySeries.points.length > 1
-                            ? width / (weeklySeries.points.length - 1)
-                            : 0;
-                        const plannedPoints = weeklySeries.points
-                          .map((point, index) => {
-                            const x = paddingX + index * step;
-                            const y =
-                              paddingY +
-                              (1 - point.planned / maxValue) * height;
-                            return `${x},${y}`;
-                          })
-                          .join(' ');
-                        const completedPoints = weeklySeries.points
-                          .map((point, index) => {
-                            const x = paddingX + index * step;
-                            const y =
-                              paddingY +
-                              (1 - point.completed / maxValue) * height;
-                            return `${x},${y}`;
-                          })
-                          .join(' ');
-                        return (
-                          <>
-                            <line
-                              x1={paddingX}
-                              y1={paddingY + height}
-                              x2={paddingX + width}
-                              y2={paddingY + height}
-                              stroke="#e2e8f0"
-                              strokeWidth="1"
-                            />
-                            <line
-                              x1={paddingX}
-                              y1={
-                                paddingY +
-                                (1 - weeklySeries.totalWeekHours / maxValue) * height
-                              }
-                              x2={paddingX + width}
-                              y2={
-                                paddingY +
-                                (1 - weeklySeries.totalWeekHours / maxValue) * height
-                              }
-                              stroke="#cbd5f5"
-                              strokeWidth="1.5"
-                              strokeDasharray="4 4"
-                            />
-                            {weeklySeries.baselineAvailable !== null ? (
-                              <line
-                                x1={paddingX}
-                                y1={
-                                  paddingY +
-                                  (1 - weeklySeries.baselineAvailable / maxValue) *
-                                    height
-                                }
-                                x2={paddingX + width}
-                                y2={
-                                  paddingY +
-                                  (1 - weeklySeries.baselineAvailable / maxValue) *
-                                    height
-                                }
-                                stroke="#c7d2c9"
-                                strokeWidth="1.5"
-                                strokeDasharray="3 5"
-                              />
-                            ) : null}
-                            <polyline
-                              fill="none"
-                              stroke="url(#plannedLine)"
-                              strokeWidth="3"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              points={plannedPoints}
-                            />
-                            <polyline
-                              fill="none"
-                              stroke="url(#completedLine)"
-                              strokeWidth="3"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              points={completedPoints}
-                            />
-                            {weeklySeries.points.map((point, index) => {
-                              const x = paddingX + index * step;
-                              const plannedY =
-                                paddingY +
-                                (1 - point.planned / maxValue) * height;
-                              const completedY =
-                                paddingY +
-                                (1 - point.completed / maxValue) * height;
-                              return (
-                                <g key={`${point.label}-${index}`}>
-                                  <circle
-                                    cx={x}
-                                    cy={plannedY}
-                                    r="3"
-                                    fill="#7f9f97"
-                                  />
-                                  <circle
-                                    cx={x}
-                                    cy={completedY}
-                                    r="3"
-                                    fill="#5f6f8f"
-                                  />
-                                </g>
-                              );
-                            })}
-                          </>
-                        );
-                      })()}
-                    </svg>
-                  </div>
-                  <div
-                    className="mt-3 grid gap-2 text-[11px] text-mutedText"
-                    style={{
-                      gridTemplateColumns: `repeat(${weeklySeries.points.length}, minmax(0, 1fr))`,
-                    }}
-                  >
-                    {weeklySeries.points.map((point) => {
-                      const shortLabel =
-                        point.label.split('–')[0]?.trim() || point.label;
-                      return (
-                        <span
-                          key={point.label}
-                          className="text-center"
-                          title={point.label}
-                        >
-                          {shortLabel}
-                        </span>
-                      );
-                    })}
-                  </div>
-                  <div className="mt-3 flex items-center justify-between text-[11px] text-mutedText">
-                    <span className="inline-flex items-center gap-2">
-                      <span className="h-2 w-2 rounded-full bg-[#7f9f97]" />
-                      Planned hours
-                    </span>
-                    <span className="inline-flex items-center gap-2">
-                      <span className="h-2 w-2 rounded-full bg-[#5f6f8f]" />
-                      Completed hours
-                    </span>
-                  </div>
-                  <div className="mt-2 flex flex-wrap items-center gap-4 text-[11px] text-mutedText">
-                    <span className="inline-flex items-center gap-2">
-                      <span className="h-2 w-3 rounded-sm bg-[#cbd5f5]" />
-                      Total week: {weeklySeries.totalWeekHours}h
-                    </span>
-                    {weeklySeries.baselineAvailable !== null ? (
-                      <span className="inline-flex items-center gap-2">
-                        <span className="h-2 w-3 rounded-sm bg-[#c7d2c9]" />
-                        After sleep + maintenance:{' '}
-                        {Math.round(weeklySeries.baselineAvailable)}h
-                      </span>
-                    ) : null}
-                  </div>
-                </>
-              ) : (
-                <p className="mt-4 text-xs text-mutedText">
-                  Add a few weeks of logs to see the shape.
-                </p>
-              )}
-            </div>
+        <h2 className="text-sm font-semibold text-text">Key signals</h2>
+        <p className="mt-1 text-xs text-mutedText">
+          Quick takeaways based on recent weeks.
+        </p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-3 text-xs text-mutedText">
+          <div className="rounded-lg border border-slate-100 bg-white px-3 py-2">
+            {mostSteadyDomain
+              ? `${mostSteadyDomain.domainName} stayed the most steady.`
+              : 'No steady domain yet.'}
+          </div>
+          <div className="rounded-lg border border-slate-100 bg-white px-3 py-2">
+            {mostUndercommitted
+              ? `${mostUndercommitted.domainName} often needed more time than planned.`
+              : 'No consistent under-commitment yet.'}
+          </div>
+          <div className="rounded-lg border border-slate-100 bg-white px-3 py-2">
+            {mostOvercommitted
+              ? `${mostOvercommitted.domainName} is often overestimated.`
+              : 'No consistent over-commitment yet.'}
+          </div>
+        </div>
+      </section>
 
-            <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-text">
-                  Weekly adherence
-                </h2>
-                <span className="text-xs text-mutedText">Planned vs. logged</span>
+      <section className="rounded-2xl border border-slate-200 bg-surface p-4 sm:p-6 shadow-sm">
+        <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
+          {/* Weekly time series */}
+          <div className="rounded-xl border border-slate-200 bg-white p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <h2 className="text-sm font-semibold text-text">
+                Weekly time series
+              </h2>
+              <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-text">
+                <input
+                  type="date"
+                  className="bg-transparent outline-none"
+                  value={rangeStartISO ?? ''}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    if (!value) return;
+                    const weekStart = getWeekStartISOForDate(
+                      new Date(`${value}T00:00:00`),
+                      settings?.weekStartDay || 'sunday',
+                    );
+                    setRangeStartISO(weekStart);
+                    if (rangeEndISO && weekStart > rangeEndISO) {
+                      setRangeEndISO(addDaysISO(weekStart, 21));
+                    }
+                  }}
+                />
+                <span className="text-slate-400 select-none">–</span>
+                <input
+                  type="date"
+                  className="bg-transparent outline-none"
+                  value={rangeEndISO ?? ''}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    if (!value) return;
+                    const weekStart = getWeekStartISOForDate(
+                      new Date(`${value}T00:00:00`),
+                      settings?.weekStartDay || 'sunday',
+                    );
+                    setRangeEndISO(weekStart);
+                    if (rangeStartISO && weekStart < rangeStartISO) {
+                      setRangeStartISO(addDaysISO(weekStart, -21));
+                    }
+                  }}
+                />
               </div>
-              <div className="mt-4 space-y-3">
-                {historySummaries.map((summary) => {
+            </div>
+            <p className="mt-1 text-xs text-mutedText">
+              Column height = 168h week. Points show planned and completed. Hover for hours.
+            </p>
+            {weeklySeries.points.length ? (
+              <>
+                <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50 p-3">
+                  <svg
+                    viewBox="0 0 520 210"
+                    className="h-48 w-full overflow-visible"
+                    role="img"
+                    aria-label="Planned vs completed hours by week"
+                    onMouseLeave={() => setHoveredSeries(null)}
+                  >
+                    {(() => {
+                      const pL = 34;
+                      const pR = 10;
+                      const pT = 10;
+                      const pB = 30;
+                      const cW = 520 - pL - pR;
+                      const cH = 210 - pT - pB;
+                      const n = weeklySeries.points.length;
+                      const totalH = 168;
+                      const step = n > 1 ? cW / (n - 1) : 0;
+                      const colW = n > 1 ? step : cW;
+                      const baseline = pT + cH;
+
+                      const toY = (v: number) => pT + cH - (v / totalH) * cH;
+                      const ticks = [0, 50, 100, 150, 168];
+
+                      return (
+                        <>
+                          {/* Y gridlines */}
+                          {ticks.map((v) => (
+                            <g key={v}>
+                              <line
+                                x1={pL} y1={toY(v)}
+                                x2={pL + cW} y2={toY(v)}
+                                stroke={v === 0 || v === 168 ? '#cbd5e1' : '#f1f5f9'}
+                                strokeWidth="1"
+                              />
+                              <text x={pL - 4} y={toY(v) + 3.5} textAnchor="end" fontSize="9" fill="#94a3b8">
+                                {v}h
+                              </text>
+                            </g>
+                          ))}
+
+                          {/* Week columns (total 168h background) + labels */}
+                          {weeklySeries.points.map((point, i) => {
+                            const cx = n > 1 ? pL + i * step : pL + cW / 2;
+                            const colX = Math.max(pL, cx - colW / 2 + 2);
+                            const colActualW = Math.min(colW - 4, cW);
+                            const shortLabel = (() => {
+                              const part = point.label.split('–')[0]?.trim() ?? point.label;
+                              return part.replace(/^(Sun|Mon|Tue|Wed|Thu|Fri|Sat),\s*/, '');
+                            })();
+                            return (
+                              <g key={`col-${point.weekId}`}>
+                                <rect
+                                  x={colX} y={pT}
+                                  width={colActualW} height={cH}
+                                  fill={point.hasLogs ? 'rgba(134,239,172,0.14)' : 'rgba(148,163,184,0.08)'}
+                                  rx="3"
+                                />
+                                <text x={cx} y={baseline + 18} textAnchor="middle" fontSize="9" fill="#94a3b8">
+                                  {shortLabel}
+                                </text>
+                              </g>
+                            );
+                          })}
+
+                          {/* Connecting lines */}
+                          {n > 1 && (
+                            <>
+                              <polyline
+                                fill="none" stroke="#8cb4ae" strokeWidth="2"
+                                strokeLinecap="round" strokeLinejoin="round"
+                                points={weeklySeries.points.map((p, i) => `${pL + i * step},${toY(p.planned)}`).join(' ')}
+                              />
+                              <polyline
+                                fill="none" stroke="#6b8fa8" strokeWidth="2"
+                                strokeLinecap="round" strokeLinejoin="round"
+                                points={weeklySeries.points.map((p, i) => `${pL + i * step},${toY(p.completed)}`).join(' ')}
+                              />
+                            </>
+                          )}
+
+                          {/* Interactive points */}
+                          {weeklySeries.points.map((point, i) => {
+                            const cx = n > 1 ? pL + i * step : pL + cW / 2;
+                            const plannedY = toY(point.planned);
+                            const completedY = toY(point.completed);
+                            const overachieved = point.completed > point.planned;
+                            return (
+                              <g key={`pts-${point.weekId}`}>
+                                <circle
+                                  cx={cx} cy={plannedY} r="5"
+                                  fill="#8cb4ae" stroke="white" strokeWidth="1.5"
+                                  style={{ cursor: 'pointer' }}
+                                  onMouseEnter={() => setHoveredSeries({ x: cx, y: plannedY, type: 'Planned', value: point.planned })}
+                                />
+                                <circle
+                                  cx={cx} cy={completedY} r="5"
+                                  fill={overachieved ? '#4d9e8e' : '#6b8fa8'} stroke="white" strokeWidth="1.5"
+                                  style={{ cursor: 'pointer' }}
+                                  onMouseEnter={() => setHoveredSeries({ x: cx, y: completedY, type: 'Completed', value: point.completed })}
+                                />
+                              </g>
+                            );
+                          })}
+
+                          {/* Tooltip */}
+                          {hoveredSeries && (() => {
+                            const tw = 76;
+                            const th = 34;
+                            const tx = Math.min(Math.max(hoveredSeries.x - tw / 2, pL), pL + cW - tw);
+                            const ty = hoveredSeries.y > pT + 40 ? hoveredSeries.y - th - 8 : hoveredSeries.y + 10;
+                            return (
+                              <g pointerEvents="none">
+                                <rect x={tx} y={ty} width={tw} height={th} rx="5" fill="rgba(15,23,42,0.88)" />
+                                <text x={tx + tw / 2} y={ty + 13} textAnchor="middle" fontSize="8.5" fill="rgba(255,255,255,0.65)">
+                                  {hoveredSeries.type}
+                                </text>
+                                <text x={tx + tw / 2} y={ty + 27} textAnchor="middle" fontSize="12" fill="white" fontWeight="600">
+                                  {Math.round(hoveredSeries.value)}h
+                                </text>
+                              </g>
+                            );
+                          })()}
+                        </>
+                      );
+                    })()}
+                  </svg>
+                </div>
+                <div className="mt-3 flex items-center gap-4 text-[11px] text-mutedText">
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-[#8cb4ae]" />
+                    Planned
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-[#6b8fa8]" />
+                    Completed
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="h-2 w-3 rounded-sm" style={{ background: 'rgba(134,239,172,0.4)' }} />
+                    Has logs
+                  </span>
+                </div>
+              </>
+            ) : (
+              <p className="mt-4 text-xs text-mutedText">
+                No plan data for the selected date range.
+              </p>
+            )}
+          </div>
+
+          {/* Weekly adherence */}
+          <div className="rounded-xl border border-slate-200 bg-white p-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-text">
+                Weekly adherence
+              </h2>
+              <span className="text-xs text-mutedText">Planned vs. logged</span>
+            </div>
+            <div className="mt-4 space-y-3">
+              {historySummaries.length === 0 ? (
+                <p className="text-xs text-mutedText">No plan data yet.</p>
+              ) : (
+                historySummaries.map((summary) => {
                   const ratio = Math.min(
                     1,
                     summary.plannedTotal > 0
@@ -922,6 +860,7 @@ export default function HistoryPage() {
                       : 0,
                   );
                   const isSelected = selectedSummary?.weekId === summary.weekId;
+                  const hasLogs = (weekLogsByWeek[summary.weekId]?.length ?? 0) > 0;
                   return (
                     <button
                       key={summary.weekId}
@@ -934,7 +873,10 @@ export default function HistoryPage() {
                       onClick={() => setSelectedHistoryWeekId(summary.weekId)}
                     >
                       <div className="flex items-center justify-between">
-                        <span className="font-medium text-text">
+                        <span className="font-medium text-text flex items-center gap-1.5">
+                          {hasLogs && (
+                            <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                          )}
                           {summary.rangeLabel}
                         </span>
                         <span>
@@ -948,96 +890,91 @@ export default function HistoryPage() {
                           style={{ width: `${Math.round(ratio * 100)}%` }}
                         />
                       </div>
-                      </button>
-                    );
-                  })}
-              </div>
-              {bestWeek ? (
-                <div className="mt-4 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-xs text-mutedText">
-                  Best alignment: {bestWeek.rangeLabel} ·{' '}
-                  {Math.round(bestWeek.adherence * 100)}%
-                </div>
-              ) : null}
-              {weakestWeek ? (
-                <div className="mt-2 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-xs text-mutedText">
-                  Most drift: {weakestWeek.rangeLabel} ·{' '}
-                  {Math.round(weakestWeek.adherence * 100)}%
-                </div>
-              ) : null}
+                    </button>
+                  );
+                })
+              )}
             </div>
-
-            <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <h2 className="text-sm font-semibold text-text">
-                    Domain + Ikigai alignment
-                  </h2>
-                  <p className="mt-1 text-xs text-mutedText">
-                    Planned vs. completed for{' '}
-                    {selectedSummary?.rangeLabel ?? 'this week'}.
-                  </p>
-                </div>
-                <div className="hidden items-center gap-3 text-[11px] text-mutedText sm:flex">
-                  <span className="inline-flex items-center gap-1">
-                    <span className="h-2 w-2 rounded-full bg-accentSoft" />
-                    Planned
-                  </span>
-                  <span className="inline-flex items-center gap-1">
-                    <span className="h-2 w-2 rounded-full bg-slate-400" />
-                    Completed
-                  </span>
-                </div>
+            {bestWeek ? (
+              <div className="mt-4 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-xs text-mutedText">
+                Best alignment: {bestWeek.rangeLabel} · {Math.round(bestWeek.adherence * 100)}%
               </div>
-              <div className="mt-4 grid gap-4 sm:gap-6 md:grid-cols-2">
-                <div className="space-y-3">
-                  <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
-                    Domains
-                  </p>
-                  {domainAlignment.length === 0 ? (
-                    <p className="text-xs text-mutedText">No history yet.</p>
-                  ) : (
-                    domainAlignment.map((domain) => (
-                      <div
-                        key={domain.name}
-                        className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-3"
-                      >
-                        <div className="flex items-start justify-between gap-2 text-xs text-mutedText sm:items-center">
-                          <span className="font-medium text-text flex-shrink-0 min-w-0 truncate">{domain.name}</span>
-                          <span className="flex-shrink-0 whitespace-nowrap">
-                            {Math.round(domain.completed)}h ·{' '}
-                            {Math.round(domain.planned)}h
-                          </span>
-                        </div>
+            ) : null}
+            {weakestWeek ? (
+              <div className="mt-2 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-xs text-mutedText">
+                Most drift: {weakestWeek.rangeLabel} · {Math.round(weakestWeek.adherence * 100)}%
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-surface p-4 sm:p-6 shadow-sm">
+        <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
+          {/* Domain + Ikigai alignment */}
+          <div className="rounded-xl border border-slate-200 bg-white p-4">
+            <div className="flex items-start justify-between">
+              <div>
+                <h2 className="text-sm font-semibold text-text">
+                  Domain + Ikigai alignment
+                </h2>
+                <p className="mt-1 text-xs text-mutedText">
+                  Planned vs. completed for{' '}
+                  {selectedSummary?.rangeLabel ?? 'this week'}.
+                </p>
+              </div>
+              <div className="hidden items-center gap-3 text-[11px] text-mutedText sm:flex">
+                <span className="inline-flex items-center gap-1">
+                  <span className="h-2 w-2 rounded-full bg-accentSoft" />
+                  Planned
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <span className="h-2 w-2 rounded-full bg-slate-400" />
+                  Completed
+                </span>
+              </div>
+            </div>
+            <div className="mt-4 grid gap-4 sm:gap-6 md:grid-cols-2">
+              <div className="space-y-3">
+                <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
+                  Domains
+                </p>
+                {domainAlignment.length === 0 ? (
+                  <p className="text-xs text-mutedText">No data for this week.</p>
+                ) : (
+                  domainAlignment.map((domain) => (
+                    <div
+                      key={domain.name}
+                      className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-3"
+                    >
+                      <div className="flex items-start justify-between gap-2 text-xs text-mutedText sm:items-center">
+                        <span className="font-medium text-text flex-shrink-0 min-w-0 truncate">{domain.name}</span>
+                        <span className="flex-shrink-0 whitespace-nowrap">
+                          {Math.round(domain.completed)}h · {Math.round(domain.planned)}h
+                        </span>
+                      </div>
                       <div className="mt-3 h-3 w-full rounded-full bg-slate-100">
+                        <div className="h-3 rounded-full bg-accentSoft" style={{ width: '100%' }} />
                         <div
-                          className="h-3 rounded-full bg-accentSoft"
-                          style={{ width: '100%' }}
-                        />
-                        <div
-                          className="mt-[-12px] h-3 rounded-full bg-slate-600"
+                          className="mt-[-12px] h-3 rounded-full"
                           style={{
-                            width: `${Math.min(
-                              100,
-                              Math.round(domain.completion * 100),
-                            )}%`,
-                            backgroundColor: `rgba(${getDomainColor(domain.name).r}, ${
-                              getDomainColor(domain.name).g
-                            }, ${getDomainColor(domain.name).b}, ${Math.min(
-                              1,
-                              0.35 + domain.completion * 0.65,
-                            )})`,
+                            width: `${Math.min(100, Math.round(domain.completion * 100))}%`,
+                            backgroundColor: `rgba(${getDomainColor(domain.name).r}, ${getDomainColor(domain.name).g}, ${getDomainColor(domain.name).b}, ${Math.min(1, 0.35 + domain.completion * 0.65)})`,
                           }}
                         />
                       </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-                <div className="space-y-3">
-                  <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
-                    Ikigai values
-                  </p>
-                  {ikigaiAlignment.map((value) => (
+                    </div>
+                  ))
+                )}
+              </div>
+              <div className="space-y-3">
+                <p className="text-xs uppercase tracking-[0.2em] text-mutedText">
+                  Ikigai values
+                </p>
+                {ikigaiAlignment.every((v) => v.planned === 0) ? (
+                  <p className="text-xs text-mutedText">No data for this week.</p>
+                ) : (
+                  ikigaiAlignment.map((value) => (
                     <div
                       key={value.id}
                       className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-3"
@@ -1045,182 +982,140 @@ export default function HistoryPage() {
                       <div className="flex items-start justify-between gap-2 text-xs text-mutedText sm:items-center">
                         <span className="font-medium text-text flex-shrink-0 min-w-0 truncate">{value.label}</span>
                         <span className="flex-shrink-0 whitespace-nowrap">
-                          {Math.round(value.completed)}h ·{' '}
-                          {Math.round(value.planned)}h
+                          {Math.round(value.completed)}h · {Math.round(value.planned)}h
                         </span>
                       </div>
                       <div className="mt-3 h-3 w-full rounded-full bg-slate-100">
+                        <div className="h-3 rounded-full bg-accentSoft" style={{ width: '100%' }} />
                         <div
-                          className="h-3 rounded-full bg-accentSoft"
-                          style={{ width: '100%' }}
-                        />
-                        <div
-                          className="mt-[-12px] h-3 rounded-full bg-slate-600"
+                          className="mt-[-12px] h-3 rounded-full"
                           style={{
-                            width: `${Math.min(
-                              100,
-                              Math.round(value.completion * 100),
-                            )}%`,
-                            backgroundColor: `rgba(${IKIGAI_COLORS[value.id].r}, ${
-                              IKIGAI_COLORS[value.id].g
-                            }, ${IKIGAI_COLORS[value.id].b}, ${Math.min(
-                              1,
-                              0.35 + value.completion * 0.65,
-                            )})`,
+                            width: `${Math.min(100, Math.round(value.completion * 100))}%`,
+                            backgroundColor: `rgba(${IKIGAI_COLORS[value.id].r}, ${IKIGAI_COLORS[value.id].g}, ${IKIGAI_COLORS[value.id].b}, ${Math.min(1, 0.35 + value.completion * 0.65)})`,
                           }}
                         />
                       </div>
                     </div>
-                  ))}
-                </div>
+                  ))
+                )}
               </div>
             </div>
+          </div>
 
-            <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <h2 className="text-sm font-semibold text-text">
-                    Consistency highlights
-                  </h2>
-                  <p className="mt-1 text-xs text-mutedText">
-                    A gentle read on where things stayed most steady.
-                  </p>
-                </div>
-                <div className="hidden text-[11px] text-mutedText sm:block">
-                  Richer green = steadier
-                </div>
+          {/* Reflections — selected week */}
+          <div className="rounded-xl border border-slate-200 bg-white p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-text">Reflections</h2>
+                <p className="mt-1 text-xs text-mutedText">
+                  {selectedSummary?.weekId === currentWeekId
+                    ? 'This week'
+                    : (selectedSummary?.rangeLabel ?? 'Selected week')}
+                </p>
               </div>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                {domainInsights.map((domain) => (
-                  <div
-                    key={domain.domainName}
-                    className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-3 text-xs"
+              <Link
+                href={selectedSummary ? `/week/${encodeURIComponent(selectedSummary.weekId)}` : '/reflect'}
+                className="text-xs text-mutedText hover:text-text shrink-0"
+              >
+                {selectedSummary?.weekId === currentWeekId ? 'Add note →' : 'View week →'}
+              </Link>
+            </div>
+            {selectedWeekNotes.length === 0 ? (
+              <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50 px-3 py-3 text-xs text-mutedText">
+                No reflections for this week yet.
+              </div>
+            ) : (
+              <ol
+                className="mt-4 max-h-96 space-y-2 overflow-y-auto pr-1"
+                data-testid="reflection-week-list"
+              >
+                {selectedWeekNotes.map((note, i) => (
+                  <li
+                    key={i}
+                    className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-xs text-text"
                   >
-                    <div className="flex items-start justify-between gap-2 sm:items-center">
-                      <span
-                        className="rounded-full px-2 py-0.5 text-[11px] font-medium text-emerald-900 flex-shrink-0"
-                        style={{
-                          backgroundColor: `rgba(16, 185, 129, ${
-                            0.18 + domain.consistencyScore * 0.52
-                          })`,
-                        }}
-                      >
-                        {domain.domainName}
+                    {note.emoji ? (
+                      <span className="mr-1.5">{note.emoji}</span>
+                    ) : null}
+                    {note.categoryId === 'check_in' ? (
+                      <span className="mr-1.5 rounded-full bg-accentSoft px-1.5 py-0.5 text-[10px] text-accent">
+                        check-in
                       </span>
-                      <span className="text-mutedText font-medium flex-shrink-0">
-                        {Math.round(domain.avg * 100)}%
-                      </span>
-                    </div>
-                    <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] text-mutedText">
-                      <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5">
-                        {domain.consistency}
-                      </span>
-                      <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5">
-                        {domain.trend}
-                      </span>
-                    </div>
-                    <div className="mt-2 h-1.5 w-full rounded-full bg-white">
-                      <div
-                        className="h-1.5 rounded-full bg-slate-400"
-                        style={{
-                          width: `${Math.round(domain.consistencyScore * 100)}%`,
-                        }}
-                      />
-                    </div>
-                  </div>
+                    ) : null}
+                    {note.text}
+                  </li>
                 ))}
-              </div>
-            </div>
+              </ol>
+            )}
+            {reflectionWeeks.length > 0 && (
+              <Link
+                href="/reflect?view=history"
+                className="mt-3 block text-[11px] text-mutedText hover:text-text"
+              >
+                Browse all {reflectionWeeks.length} weeks with notes →
+              </Link>
+            )}
           </div>
+        </div>
+      </section>
 
-          <div className="space-y-6">
-            <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h2 className="text-sm font-semibold text-text">
-                    Reflections by week
-                  </h2>
-                  <p className="mt-1 text-xs text-mutedText">
-                    Everything saved through Reflect, grouped by week.
-                  </p>
-                </div>
-                <Link
-                  href="/reflect?view=history"
-                  className="text-xs text-mutedText hover:text-text"
-                >
-                  Open reflect →
-                </Link>
-              </div>
-              {reflectionWeeks.length === 0 ? (
-                <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50 px-3 py-3 text-xs text-mutedText">
-                  No reflections saved yet.
-                </div>
-              ) : (
-                <ol
-                  className="mt-4 max-h-72 space-y-2 overflow-y-auto pr-1"
-                  data-testid="reflection-week-list"
-                >
-                  {reflectionWeeks.map(({ plan, notes }) => {
-                    const isThisWeek = plan.id === currentWeekId;
-                    const checkInCount = notes.filter(
-                      (n) => n.categoryId === 'check_in',
-                    ).length;
-                    const writtenCount = notes.length - checkInCount;
-                    return (
-                      <li key={plan.id}>
-                        <Link
-                          href={`/week/${encodeURIComponent(plan.id)}`}
-                          data-testid="history-reflection-week"
-                          className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-xs transition-colors hover:border-accent/50 hover:bg-accentSoft/40"
-                        >
-                          <span className="min-w-0">
-                            <span className="block text-[11px] uppercase tracking-[0.18em] text-mutedText">
-                              {isThisWeek
-                                ? 'This week'
-                                : formatRange(plan, timeZone)}
-                            </span>
-                            <span className="text-[10px] text-mutedText">
-                              {writtenCount > 0
-                                ? `${writtenCount} note${writtenCount === 1 ? '' : 's'}`
-                                : null}
-                              {writtenCount > 0 && checkInCount > 0 ? ' · ' : ''}
-                              {checkInCount > 0
-                                ? `${checkInCount} check-in${checkInCount === 1 ? '' : 's'}`
-                                : null}
-                            </span>
-                          </span>
-                          <span aria-hidden className="text-mutedText">→</span>
-                        </Link>
-                      </li>
-                    );
-                  })}
-                </ol>
-              )}
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <h2 className="text-sm font-semibold text-text">Key signals</h2>
+      <section className="rounded-2xl border border-slate-200 bg-surface p-4 sm:p-6 shadow-sm">
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <div className="flex items-start justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-text">
+                Consistency highlights
+              </h2>
               <p className="mt-1 text-xs text-mutedText">
-                Quick takeaways based on recent weeks.
+                Based on your complete history — not just the selected week.
               </p>
-              <div className="mt-4 space-y-3 text-xs text-mutedText">
-                <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
-                  {mostSteadyDomain
-                    ? `${mostSteadyDomain.domainName} stayed the most steady.`
-                    : 'No steady domain yet.'}
-                </div>
-                <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
-                  {mostUndercommitted
-                    ? `${mostUndercommitted.domainName} often needed more time than planned.`
-                    : 'No consistent under-commitment yet.'}
-                </div>
-                <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
-                  {mostOvercommitted
-                    ? `${mostOvercommitted.domainName} is often overestimated.`
-                    : 'No consistent over-commitment yet.'}
-                </div>
-              </div>
+            </div>
+            <div className="hidden text-[11px] text-mutedText sm:block">
+              Richer green = steadier
             </div>
           </div>
+          {domainInsights.length === 0 ? (
+            <p className="mt-4 text-xs text-mutedText">
+              Log a few weeks to see consistency patterns.
+            </p>
+          ) : (
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              {domainInsights.map((domain) => (
+                <div
+                  key={domain.domainName}
+                  className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-3 text-xs"
+                >
+                  <div className="flex items-start justify-between gap-2 sm:items-center">
+                    <span
+                      className="rounded-full px-2 py-0.5 text-[11px] font-medium text-emerald-900 flex-shrink-0"
+                      style={{
+                        backgroundColor: `rgba(16, 185, 129, ${0.18 + domain.consistencyScore * 0.52})`,
+                      }}
+                    >
+                      {domain.domainName}
+                    </span>
+                    <span className="text-mutedText font-medium flex-shrink-0">
+                      {Math.round(domain.avg * 100)}%
+                    </span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] text-mutedText">
+                    <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5">
+                      {domain.consistency}
+                    </span>
+                    <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5">
+                      {domain.trend}
+                    </span>
+                  </div>
+                  <div className="mt-2 h-1.5 w-full rounded-full bg-white">
+                    <div
+                      className="h-1.5 rounded-full bg-slate-400"
+                      style={{ width: `${Math.round(domain.consistencyScore * 100)}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </section>
     </main>

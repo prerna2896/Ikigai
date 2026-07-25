@@ -2,6 +2,17 @@
 
 import { getBufferPercentForStrictness, type Settings } from '@ikigai/core';
 
+const professionOptions: Array<{ label: string; value: Settings['professionType'] }> = [
+  { label: 'Full-time employee', value: 'full_time_employee' },
+  { label: 'Part-time employee', value: 'part_time_employee' },
+  { label: 'Founder / self-employed', value: 'founder_self_employed' },
+  { label: 'Student', value: 'student' },
+  { label: 'Looking for work', value: 'looking_for_work' },
+  { label: 'Caregiver', value: 'caregiver' },
+  { label: 'Taking a break / sabbatical', value: 'break_sabbatical' },
+  { label: 'Other', value: 'other' },
+];
+
 const strictnessOptions: Settings['strictness'][] = [
   'very_flexible',
   'somewhat_flexible',
@@ -33,7 +44,7 @@ export default function SettingsForm({
             type="number"
             min={0}
             className="rounded-xl border border-slate-200 px-3 py-2 text-text"
-            value={settings.weeklyCapacityHours}
+            value={settings.weeklyCapacityHours || ''}
             onChange={(event) =>
               onChange(
                 'weeklyCapacityHours',
@@ -106,6 +117,50 @@ export default function SettingsForm({
             onFocus={(event) => event.currentTarget.select()}
           />
         </label>
+        <label className="flex flex-col gap-2 text-sm text-mutedText md:col-span-2">
+          Occupation
+          <select
+            className="rounded-xl border border-slate-200 px-3 py-2 text-text"
+            value={settings.professionType}
+            onChange={(event) =>
+              onChange('professionType', event.target.value as Settings['professionType'])
+            }
+          >
+            {professionOptions.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </label>
+        {settings.professionType !== 'student' &&
+          settings.professionType !== 'looking_for_work' &&
+          settings.professionType !== 'break_sabbatical' && (
+          <label className="flex flex-col gap-2 text-sm text-mutedText">
+            Hours per week at work
+            <input
+              type="number"
+              min={0}
+              max={168}
+              className="rounded-xl border border-slate-200 px-3 py-2 text-text"
+              value={settings.jobHoursPerWeek || ''}
+              onChange={(event) => onChange('jobHoursPerWeek', Number(event.target.value))}
+              onFocus={(event) => event.currentTarget.select()}
+            />
+          </label>
+        )}
+        {settings.professionType === 'student' && (
+          <label className="flex flex-col gap-2 text-sm text-mutedText">
+            Hours per week in class
+            <input
+              type="number"
+              min={0}
+              max={168}
+              className="rounded-xl border border-slate-200 px-3 py-2 text-text"
+              value={settings.classHoursPerWeek || ''}
+              onChange={(event) => onChange('classHoursPerWeek', Number(event.target.value))}
+              onFocus={(event) => event.currentTarget.select()}
+            />
+          </label>
+        )}
         <label className="flex flex-col gap-2 text-sm text-mutedText">
           Week starts on
           <select
@@ -125,12 +180,6 @@ export default function SettingsForm({
           </select>
           <span className="text-xs text-mutedText">Weeks reset at 12:00 AM.</span>
         </label>
-        <div className="flex flex-col gap-2 text-sm text-mutedText">
-          Time zone
-          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-text">
-            {settings.weekTimeZone}
-          </div>
-        </div>
       </div>
       <button
         type="button"

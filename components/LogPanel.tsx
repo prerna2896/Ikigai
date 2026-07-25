@@ -215,10 +215,17 @@ export default function LogPanel({
           taskHours[task.id] = parseHours(raw);
         }
       });
+      // Auto-include any pending unplanned entry without requiring "Add unplanned" click first
+      const pendingTitle = unplannedTitle.trim();
+      const pendingHours = parseHours(unplannedHours);
+      const effectiveUnplanned =
+        pendingTitle && pendingHours > 0 && unplannedDomainId
+          ? [...unplannedTasks, { title: pendingTitle, hours: pendingHours, domainId: unplannedDomainId }]
+          : unplannedTasks;
       let workingPlan = plan;
       let planChanged = false;
-      if (unplannedTasks.length > 0) {
-        const newTasks = unplannedTasks.map((task) => ({
+      if (effectiveUnplanned.length > 0) {
+        const newTasks = effectiveUnplanned.map((task) => ({
           id: crypto.randomUUID(),
           title: task.title,
           plannedHours: 0,
@@ -415,11 +422,21 @@ export default function LogPanel({
             const planned = Math.round(task.plannedHours || 0);
             const left = Math.max(0, planned - completed);
             const isDone = planned > 0 && completed >= planned;
+            const fillPct = planned > 0 ? Math.min(100, Math.round((completed / planned) * 100)) : 0;
             return (
               <div
                 key={task.id}
-                className="flex items-center gap-3 rounded-xl border border-slate-200 px-3 py-2 text-sm text-text"
+                className="flex overflow-hidden rounded-xl border border-slate-200 text-sm text-text"
               >
+                <div
+                  className="w-1.5 shrink-0"
+                  style={{
+                    background: fillPct === 0
+                      ? '#e2e8f0'
+                      : `linear-gradient(to top, ${isDone ? '#22c55e' : '#fbbf24'} ${fillPct}%, #e2e8f0 ${fillPct}%)`
+                  }}
+                />
+                <div className="flex flex-1 items-center gap-3 px-3 py-2">
                 <span
                   className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-base"
                   title={task.domainName}
@@ -464,6 +481,7 @@ export default function LogPanel({
                   }
                   placeholder="+0"
                 />
+                </div>
               </div>
             );
           })}
