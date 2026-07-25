@@ -93,8 +93,7 @@ export default function OnboardingTonePage() {
         {/* Main Content Area */}
         <div className="space-y-6 max-w-2xl mx-auto">
           <header className="text-center space-y-2">
-            <OnboardingH1>How would you like this to feel?</OnboardingH1>
-            <OnboardingBody>There&apos;s no right choice. This just helps set the tone.</OnboardingBody>
+            <OnboardingH1>How would you like your days to feel?</OnboardingH1>
           </header>
 
           <section

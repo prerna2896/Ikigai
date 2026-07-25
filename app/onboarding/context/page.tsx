@@ -104,8 +104,7 @@ export default function OnboardingContextPage() {
               <OnboardingMonk
                 step="context"
                 size={80}
-                message=""
-                
+                message="Hi, I'm Kenji — honored to be a part of your journey."
                 isTyping={isTyping}
               />
             </div>

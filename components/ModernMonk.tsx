@@ -495,7 +495,7 @@ export default function ModernMonk({
           isActive ? 'opacity-100 translate-y-0 scale-105' : 'opacity-80 translate-y-1 scale-100'
         }`}>
           <div className="bg-surface border border-slate-200 rounded-lg p-2 shadow-sm transition-all duration-300 hover:shadow-md">
-            <p className="text-xs text-text text-center transition-all duration-300 leading-snug" data-testid="monk-message">{message}</p>
+            <p className="text-sm text-text text-center transition-all duration-300 leading-snug" data-testid="monk-message">{message}</p>
             {/* Speech bubble tail - pointing up to Kenji */}
             <div className="absolute -top-1.5 left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-b-[5px] border-b-surface"></div>
             <div className="absolute -top-1 left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-[3px] border-l-transparent border-r-[3px] border-r-transparent border-b-[3px] border-b-slate-200"></div>

@@ -4,20 +4,38 @@ export type ReflectionQuestion = {
   helper?: string;
   type: 'text' | 'choice';
   options?: string[];
+  hasOther?: boolean;
 };
+
+export const OTHER_SENTINEL = '__other__';
 
 export const reflectionQuestions: ReflectionQuestion[] = [
   {
     id: 'wins-to-notice',
     prompt: 'When a week feels good, what do you want to notice about it?',
-    helper: 'Short and personal is fine.',
-    type: 'text',
+    type: 'choice',
+    options: [
+      'I made progress on something that matters',
+      'I felt present and not scattered',
+      'I had energy left at the end of the day',
+      'I spent time on things I care about',
+      'I felt balanced across different areas of life',
+    ],
+    hasOther: true,
   },
   {
     id: 'steady-goal',
     prompt: 'What do you want to move toward this season?',
-    helper: 'A direction is enough.',
-    type: 'text',
+    type: 'choice',
+    options: [
+      'More balance across work and life',
+      'Building a consistent routine',
+      'Making progress on a personal project',
+      'Improving my health or energy',
+      'Growing in my career or skills',
+      'Creating more space for rest',
+    ],
+    hasOther: true,
   },
   {
     id: 'energy-shape',

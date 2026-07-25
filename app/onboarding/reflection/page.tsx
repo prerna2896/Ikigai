@@ -1,23 +1,33 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { type Profile } from '@ikigai/core';
 import { getLocalRepository } from '@ikigai/storage';
-import { reflectionQuestions } from './questions';
+import { reflectionQuestions, OTHER_SENTINEL } from './questions';
 import { OnboardingProgress } from '../../../components/OnboardingProgress';
 import OnboardingMonk from '../../../components/OnboardingMonk';
 import { OnboardingH1, OnboardingBody } from '../../../components/OnboardingTypography';
 
-export default function OnboardingReflectionPage() {
+function OnboardingReflectionContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [repository, setRepository] = useState<ReturnType<
     typeof getLocalRepository
   > | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<string | null>(null);
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [currentIndex, setCurrentIndex] = useState(() => {
+    const q = searchParams?.get('q');
+    if (q) {
+      const parsed = Number(q);
+      if (!Number.isNaN(parsed) && parsed >= 0 && parsed < reflectionQuestions.length) {
+        return parsed;
+      }
+    }
+    return 0;
+  });
   const totalQuestions = reflectionQuestions.length;
   const currentQuestion = reflectionQuestions[currentIndex];
   const isLast = currentIndex === totalQuestions - 1;
@@ -101,7 +111,6 @@ export default function OnboardingReflectionPage() {
         <div className="space-y-6">
           <header className="space-y-3">
             <OnboardingH1>A few gentle questions</OnboardingH1>
-            <OnboardingBody>There are no right answers here. Short responses are enough.</OnboardingBody>
             <OnboardingBody
               className="text-xs font-medium"
               data-testid="reflection-question-counter"
@@ -140,31 +149,61 @@ export default function OnboardingReflectionPage() {
                   data-testid={`reflection-input-${currentQuestion.id}`}
                   autoFocus
                 />
-              ) : (
-                <div className="flex flex-col gap-2">
-                  {currentQuestion.options?.map((option) => {
-                    const selected = answers[currentQuestion.id] === option;
-                    return (
-                      <button
-                        key={option}
-                        type="button"
-                        onClick={() =>
-                          handleAnswerChange(currentQuestion.id, option)
-                        }
-                        aria-pressed={selected}
-                        data-testid={`reflection-option-${currentQuestion.id}-${option}`}
-                        className={`min-h-12 rounded-xl border px-4 py-3 text-left text-sm font-medium transition-colors ${
-                          selected
-                            ? 'border-accent bg-accent text-white'
-                            : 'border-slate-200 bg-white text-text hover:border-slate-300'
-                        }`}
-                      >
-                        {option}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
+              ) : (() => {
+                const current = answers[currentQuestion.id] ?? '';
+                const isOther = current !== '' && !currentQuestion.options?.includes(current);
+                return (
+                  <div className="flex flex-col gap-2">
+                    {currentQuestion.options?.map((option) => {
+                      const selected = current === option;
+                      return (
+                        <button
+                          key={option}
+                          type="button"
+                          onClick={() => handleAnswerChange(currentQuestion.id, option)}
+                          aria-pressed={selected}
+                          data-testid={`reflection-option-${currentQuestion.id}-${option}`}
+                          className={`min-h-12 rounded-xl border px-4 py-3 text-left text-sm font-medium transition-colors ${
+                            selected
+                              ? 'border-accent bg-accent text-white'
+                              : 'border-slate-200 bg-white text-text hover:border-slate-300'
+                          }`}
+                        >
+                          {option}
+                        </button>
+                      );
+                    })}
+                    {currentQuestion.hasOther ? (
+                      <div className="flex flex-col gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleAnswerChange(currentQuestion.id, isOther ? current : OTHER_SENTINEL)}
+                          aria-pressed={isOther}
+                          data-testid={`reflection-option-${currentQuestion.id}-other`}
+                          className={`min-h-12 rounded-xl border px-4 py-3 text-left text-sm font-medium transition-colors ${
+                            isOther
+                              ? 'border-accent bg-accent text-white'
+                              : 'border-slate-200 bg-white text-text hover:border-slate-300'
+                          }`}
+                        >
+                          Other
+                        </button>
+                        {isOther ? (
+                          <input
+                            type="text"
+                            autoFocus
+                            placeholder="Describe what a good week feels like for you…"
+                            value={current === OTHER_SENTINEL ? '' : current}
+                            onChange={(e) => handleAnswerChange(currentQuestion.id, e.target.value || OTHER_SENTINEL)}
+                            data-testid={`reflection-input-${currentQuestion.id}`}
+                            className="rounded-xl border border-accent px-4 py-3 text-sm text-text focus:outline-none focus:ring-2 focus:ring-accent/30"
+                          />
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })()}
             </div>
           </section>
 
@@ -200,5 +239,13 @@ export default function OnboardingReflectionPage() {
         </button>
       </footer>
     </main>
+  );
+}
+
+export default function OnboardingReflectionPage() {
+  return (
+    <Suspense>
+      <OnboardingReflectionContent />
+    </Suspense>
   );
 }

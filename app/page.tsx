@@ -239,24 +239,6 @@ function NoOnboarding() {
         priority
         className="brand-mark-dark h-32 w-32"
       />
-      <Image
-        src="/brand/mark-light.png"
-        alt=""
-        aria-hidden
-        width={128}
-        height={128}
-        priority
-        className="brand-mark-light h-32 w-32 animate-spin-slow"
-      />
-      <Image
-        src="/brand/mark-dark.png"
-        alt=""
-        aria-hidden
-        width={128}
-        height={128}
-        priority
-        className="brand-mark-dark h-32 w-32 animate-spin-slow"
-      />
 
       <h1 className="font-serif text-5xl font-semibold tracking-tight text-text">
         Ikigai
