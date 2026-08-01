@@ -66,16 +66,24 @@ export default function TopNav() {
   const isOnboarding = pathname.startsWith('/onboarding');
   const isHome = pathname === '/';
   const [initials, setInitials] = useState('·');
+  const [hasOnboarded, setHasOnboarded] = useState<boolean | null>(null);
 
   useEffect(() => {
     try {
       const repo = getLocalRepository();
       repo
         .getProfile()
-        .then((profile) => setInitials(getInitials(profile?.name)))
-        .catch(() => setInitials('·'));
+        .then((profile) => {
+          setInitials(getInitials(profile?.name));
+          setHasOnboarded(Boolean(profile?.name));
+        })
+        .catch(() => {
+          setInitials('·');
+          setHasOnboarded(false);
+        });
     } catch {
       setInitials('·');
+      setHasOnboarded(false);
     }
   }, [pathname]);
 
@@ -120,7 +128,7 @@ export default function TopNav() {
             </span>
           </Link>
         )}
-        {isOnboarding ? null : (
+        {isOnboarding || !hasOnboarded ? null : (
           <nav
             aria-label="Primary"
             data-testid="home-tabs"
