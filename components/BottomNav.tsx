@@ -1,8 +1,9 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { getLocalRepository } from '@ikigai/storage';
 
 const iconClass = 'h-5 w-5';
 
@@ -87,8 +88,21 @@ const tabs: ReadonlyArray<{
 
 export default function BottomNav() {
   const pathname = usePathname();
+  const [hasOnboarded, setHasOnboarded] = useState<boolean | null>(null);
 
-  if (pathname.startsWith('/onboarding')) {
+  useEffect(() => {
+    try {
+      const repo = getLocalRepository();
+      repo
+        .getProfile()
+        .then((profile) => setHasOnboarded(Boolean(profile?.name)))
+        .catch(() => setHasOnboarded(false));
+    } catch {
+      setHasOnboarded(false);
+    }
+  }, [pathname]);
+
+  if (pathname.startsWith('/onboarding') || !hasOnboarded) {
     return null;
   }
 

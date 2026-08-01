@@ -272,11 +272,28 @@ export default function WeekPlanPage() {
     return `${formatter.format(start)} – ${formatter.format(end)}`;
   }, [weekPlan, settings]);
 
+  // Stable render order for the task list. flattenTasks walks domains
+  // in order, so moving a task to a new domain would otherwise jump its
+  // row position — jarring while editing. This ref preserves first-seen
+  // order: new tasks append at the end, existing tasks keep their slot
+  // even after a domain change.
+  const taskOrderRef = useRef<string[]>([]);
   const taskList = useMemo(() => {
     if (!weekPlan) {
       return [] as ReturnType<typeof flattenTasks>;
     }
-    return flattenTasks(weekPlan.domains);
+    const flattened = flattenTasks(weekPlan.domains);
+    const byId = new Map(flattened.map((item) => [item.task.id, item]));
+    const preserved = taskOrderRef.current.filter((id) => byId.has(id));
+    const preservedSet = new Set(preserved);
+    const appended = flattened
+      .map((item) => item.task.id)
+      .filter((id) => !preservedSet.has(id));
+    const nextOrder = [...preserved, ...appended];
+    taskOrderRef.current = nextOrder;
+    return nextOrder
+      .map((id) => byId.get(id))
+      .filter((item): item is NonNullable<typeof item> => Boolean(item));
   }, [weekPlan]);
 
   const lastWeekTasks = useMemo(() => {
@@ -1022,7 +1039,7 @@ export default function WeekPlanPage() {
                 </div>
               </div>
               <div className="flex flex-col items-center gap-4">
-                {weekPlan ? (
+                {weekPlan && hasTasks ? (
                   <div data-testid="week-plot">
                     {plotMode === 'domains' ? (
                       USE_CRYSTAL_PLOT ? (
@@ -1030,7 +1047,7 @@ export default function WeekPlanPage() {
                           variant={theme}
                           domains={crystalDomains}
                           activeDomainId={selectedDomainId}
-                          showSkeleton={!hasTasks}
+                          showSkeleton={false}
                           onSelectDomain={(domainId) => {
                             setSelectedPrincipleId(null);
                             setSelectedDomainId(domainId);
@@ -1041,7 +1058,7 @@ export default function WeekPlanPage() {
                         <IkigaiWheelPlot
                           domains={weekPlan.domains}
                           activeDomainId={selectedDomainId}
-                          showSkeleton={!hasTasks}
+                          showSkeleton={false}
                           onSelectDomain={(domainId) => {
                             setSelectedPrincipleId(null);
                             setSelectedDomainId(domainId);
@@ -1062,35 +1079,47 @@ export default function WeekPlanPage() {
                       />
                     )}
                   </div>
-                ) : (
-                  <div className="h-[320px] w-[320px]" />
-                )}
-                <div className="text-center">
-                  <p className="text-sm font-medium text-text">
-                    {hasTasks && largestDomain
-                      ? PLAN_COPY.largestDomainLabel
-                      : PLAN_COPY.pickDomain}
-                  </p>
-                  <p className="text-xs text-mutedText">
-                    {hasTasks && largestDomain
-                      ? PLAN_COPY.largestDomainNote
-                      : PLAN_COPY.renameHint}
-                  </p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    className="rounded-full border border-slate-300 px-3 py-1 text-xs text-text"
-                    onClick={() => setSidebarOpen(true)}
+                ) : weekPlan ? (
+                  <div
+                    data-testid="plan-empty-state"
+                    className="flex h-[280px] w-[280px] flex-col items-center justify-center gap-3 rounded-full border-2 border-dashed border-slate-200 text-center"
                   >
-                    View domains
-                  </button>
-                  {weekPlan && weekPlan.domains.length >= 12 ? (
-                    <span className="text-xs text-mutedText">
-                      {PLAN_COPY.maxDomains}
-                    </span>
-                  ) : null}
-                </div>
+                    <p className="px-8 text-sm font-medium text-mutedText">
+                      Your week&apos;s shape will appear here
+                    </p>
+                    <p className="px-8 text-xs text-mutedText">
+                      Add tasks with hours above to see the distribution
+                    </p>
+                  </div>
+                ) : (
+                  <div className="h-[280px] w-[280px]" />
+                )}
+                {hasTasks && largestDomain ? (
+                  <div className="text-center">
+                    <p className="text-sm font-medium text-text">
+                      {PLAN_COPY.largestDomainLabel}
+                    </p>
+                    <p className="text-xs text-mutedText">
+                      {PLAN_COPY.largestDomainNote}
+                    </p>
+                  </div>
+                ) : null}
+                {hasTasks ? (
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      className="rounded-full border border-slate-300 px-3 py-1 text-xs text-text"
+                      onClick={() => setSidebarOpen(true)}
+                    >
+                      View domains
+                    </button>
+                    {weekPlan && weekPlan.domains.length >= 12 ? (
+                      <span className="text-xs text-mutedText">
+                        {PLAN_COPY.maxDomains}
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
                 {sidebarOpen ? (
                   <div
                     ref={panelRef}
@@ -1388,6 +1417,12 @@ export default function WeekPlanPage() {
                     data-testid="task-row"
                     data-task-id={task.id}
                   >
+                    <span
+                      className="flex h-7 w-7 items-center justify-center text-base leading-none"
+                      aria-hidden="true"
+                    >
+                      {getDomainIcon(domain.name)}
+                    </span>
                     <input
                       type="text"
                       className="min-w-[180px] flex-1 text-sm text-text outline-none"
@@ -1440,7 +1475,7 @@ export default function WeekPlanPage() {
                     <div className={`relative ${domainPickerTaskId === task.id ? 'z-10' : ''}`}>
                       <button
                         type="button"
-                        className="rounded-full border border-slate-200 px-3 py-1 text-xs text-mutedText"
+                        className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1 text-xs"
                         onClick={() =>
                           setDomainPickerTaskId(
                             domainPickerTaskId === task.id ? null : task.id,
@@ -1448,7 +1483,12 @@ export default function WeekPlanPage() {
                         }
                         data-testid="task-row-domain"
                       >
-                        {domain.name} ▾
+                        <span className="font-medium text-text">{domain.name}</span>
+                        <span className="text-mutedText" aria-hidden="true">·</span>
+                        <span className="text-mutedText">
+                          {IKIGAI_PRINCIPLE_LABEL[domain.principleId]}
+                        </span>
+                        <span className="text-mutedText" aria-hidden="true">▾</span>
                       </button>
                       {domainPickerTaskId === task.id ? (
                         <div className="absolute right-0 top-9 z-10 w-56 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
