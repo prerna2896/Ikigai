@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { errorMessage } from '../../lib/errors';
 import Link from 'next/link';
 import type {
   Settings,
@@ -9,8 +10,9 @@ import type {
   WeekPlan,
 } from '@ikigai/core';
 import { suggestPrincipleForName, type IkigaiPrincipleId } from '@ikigai/core';
-import { getLocalRepository } from '@ikigai/storage';
 import { getWeekEndISO, withDerivedPlannedHours } from '../week/plan/planUtils';
+import { useRepository } from '../../components/RepositoryProvider';
+import { useCloudSyncVersion } from '../../components/CloudSyncProvider';
 import {
   decodeReflectionNote,
   type ParsedReflectionNote,
@@ -102,6 +104,9 @@ const formatRange = (weekPlan: WeekPlan, timeZone: string) => {
 };
 
 export default function HistoryPage() {
+  const { settingsRepo, weekPlanRepo, weekLogRepo, weekNoteRepo } =
+    useRepository();
+  const cloudVersion = useCloudSyncVersion();
   const [settings, setSettings] = useState<Settings | null>(null);
   const [weekPlans, setWeekPlans] = useState<WeekPlan[]>([]);
   const [weekLogsByWeek, setWeekLogsByWeek] = useState<
@@ -124,74 +129,76 @@ export default function HistoryPage() {
   } | null>(null);
 
   useEffect(() => {
-    try {
-      const repo = getLocalRepository();
-      Promise.all([repo.getSettings(), repo.listWeekPlans()])
-        .then(async ([settingsRecord, plans]) => {
-          setSettings(settingsRecord);
-          if (plans.length === 0) {
-            setWeekPlans([]);
-            setWeekLogsByWeek({});
-            return;
-          }
-
-          // Remove seeded plans: the seed function spread task objects verbatim
-          // (including their `id` field), so seeded plans share task IDs with
-          // the real current plan. Genuine past plans always use fresh UUIDs.
-          const newest = [...plans].sort((a, b) =>
-            a.weekStartISO < b.weekStartISO ? 1 : -1,
-          )[0];
-          if (newest) {
-            const realTaskIds = new Set(
-              newest.domains.flatMap((d) => d.tasks.map((t) => t.id)),
-            );
-            const seeded = plans.filter(
-              (p) =>
-                p.id !== newest.id &&
-                p.domains.some((d) => d.tasks.some((t) => realTaskIds.has(t.id))),
-            );
-            if (seeded.length > 0) {
-              await Promise.all(seeded.map((p) => repo.deleteWeekPlan(p.id)));
-              plans = plans.filter((p) => !seeded.some((s) => s.id === p.id));
-            }
-          }
-
-          const sorted = [...plans].sort((a, b) =>
-            a.weekStartISO < b.weekStartISO ? 1 : -1,
-          );
-          setWeekPlans(sorted);
-          const logsByWeek: Record<string, WeekLogEntry[]> = {};
-          await Promise.all(
-            sorted.map(async (plan) => {
-              const logs = await repo.getWeekLogs(plan.id);
-              logsByWeek[plan.id] = [...logs].sort((a, b) =>
-                a.dateISO < b.dateISO ? 1 : -1,
-              );
-            }),
-          );
-          setWeekLogsByWeek(logsByWeek);
-          const notesMap: Record<string, WeekNote[]> = {};
-          await Promise.all(
-            sorted.map(async (plan) => {
-              const notes = await repo.listWeekNotes(plan.id);
-              notesMap[plan.id] = [...notes].sort((a, b) =>
-                a.createdAt < b.createdAt
-                  ? 1
-                  : a.createdAt > b.createdAt
-                    ? -1
-                    : 0,
-              );
-            }),
-          );
-          setNotesByWeek(notesMap);
-          const currentId = sorted[0].id;
-          setSelectedHistoryWeekId((prev) => prev ?? currentId);
-        })
-        .catch((error) => setStatus(String(error)));
-    } catch (error) {
-      setStatus(String(error));
+    if (!settingsRepo || !weekPlanRepo || !weekLogRepo || !weekNoteRepo) {
+      return;
     }
-  }, []);
+    Promise.all([settingsRepo.getSettings(), weekPlanRepo.listWeekPlans()])
+      .then(async ([settingsRecord, plans]) => {
+        setSettings(settingsRecord);
+        if (plans.length === 0) {
+          setWeekPlans([]);
+          setWeekLogsByWeek({});
+          return;
+        }
+
+        // Remove seeded plans: the seed function spread task objects verbatim
+        // (including their `id` field), so seeded plans share task IDs with
+        // the real current plan. Genuine past plans always use fresh UUIDs.
+        const newest = [...plans].sort((a, b) =>
+          a.weekStartISO < b.weekStartISO ? 1 : -1,
+        )[0];
+        if (newest) {
+          const realTaskIds = new Set(
+            newest.domains.flatMap((d) => d.tasks.map((t) => t.id)),
+          );
+          const seeded = plans.filter(
+            (p) =>
+              p.id !== newest.id &&
+              p.domains.some((d) =>
+                d.tasks.some((t) => realTaskIds.has(t.id)),
+              ),
+          );
+          if (seeded.length > 0) {
+            await Promise.all(
+              seeded.map((p) => weekPlanRepo.deleteWeekPlan(p.id)),
+            );
+            plans = plans.filter((p) => !seeded.some((s) => s.id === p.id));
+          }
+        }
+
+        const sorted = [...plans].sort((a, b) =>
+          a.weekStartISO < b.weekStartISO ? 1 : -1,
+        );
+        setWeekPlans(sorted);
+        const logsByWeek: Record<string, WeekLogEntry[]> = {};
+        await Promise.all(
+          sorted.map(async (plan) => {
+            const logs = await weekLogRepo.getWeekLogs(plan.id);
+            logsByWeek[plan.id] = [...logs].sort((a, b) =>
+              a.dateISO < b.dateISO ? 1 : -1,
+            );
+          }),
+        );
+        setWeekLogsByWeek(logsByWeek);
+        const notesMap: Record<string, WeekNote[]> = {};
+        await Promise.all(
+          sorted.map(async (plan) => {
+            const notes = await weekNoteRepo.listWeekNotes(plan.id);
+            notesMap[plan.id] = [...notes].sort((a, b) =>
+              a.createdAt < b.createdAt
+                ? 1
+                : a.createdAt > b.createdAt
+                  ? -1
+                  : 0,
+            );
+          }),
+        );
+        setNotesByWeek(notesMap);
+        const currentId = sorted[0].id;
+        setSelectedHistoryWeekId((prev) => prev ?? currentId);
+      })
+      .catch((error) => setStatus(errorMessage(error)));
+  }, [settingsRepo, weekPlanRepo, weekLogRepo, weekNoteRepo, cloudVersion]);
 
 
   const timeZone =

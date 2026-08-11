@@ -3,21 +3,19 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import type { DomainTask, WeekDomain, WeekPlan } from '@ikigai/core';
-import { getLocalRepository } from '@ikigai/storage';
 import {
   derivePlannedHours,
   getWeekStartISO,
   applyDefaultDomainNames,
   withDerivedPlannedHours,
 } from '../../planUtils';
+import { useRepository } from '../../../../../components/RepositoryProvider';
 
 export default function WeekDomainPage() {
   const router = useRouter();
   const params = useParams();
   const domainId = params?.domainId as string;
-  const [repository, setRepository] = useState<ReturnType<
-    typeof getLocalRepository
-  > | null>(null);
+  const { settingsRepo, weekPlanRepo } = useRepository();
   const [plan, setPlan] = useState<WeekPlan | null>(null);
   const [domain, setDomain] = useState<WeekDomain | null>(null);
   const [nameInput, setNameInput] = useState('');
@@ -38,57 +36,52 @@ export default function WeekDomainPage() {
   };
 
   useEffect(() => {
-    try {
-      const repo = getLocalRepository();
-      setRepository(repo);
-      Promise.all([repo.getSettings(), repo.listWeekPlans()])
-        .then(async ([settings, plans]) => {
-          const timeZone =
-            settings.weekTimeZone ||
-            Intl.DateTimeFormat().resolvedOptions().timeZone ||
-            'UTC';
-          const weekStartDay = settings.weekStartDay || 'sunday';
-          const preferNextWeek = plans.length === 0;
-          const weekStartISO = getWeekStartISO(
-            new Date(),
-            weekStartDay,
-            preferNextWeek,
-          );
-          const record = await repo.getWeekPlan(weekStartISO);
-          if (!record) {
-            router.replace('/week/plan');
-            return;
-          }
-          const normalized = applyDefaultDomainNames(record);
-          if (
-            normalized !== record ||
-            !normalized.weekTimeZone ||
-            !normalized.weekStartDay
-          ) {
-            await repo.saveWeekPlan({
-              ...normalized,
-              weekTimeZone: normalized.weekTimeZone || timeZone,
-              weekStartDay: normalized.weekStartDay || weekStartDay,
-            });
-          }
-          const withDerived = withDerivedPlannedHours(normalized);
-          setPlan(withDerived);
-          const found = withDerived.domains.find((item) => item.id === domainId);
-          if (!found) {
-            router.replace('/week/plan');
-            return;
-          }
-          setDomain(found);
-          setNameInput(found.name);
-        })
-        .catch((error) => setStatus(String(error)));
-    } catch (error) {
-      setStatus(String(error));
-    }
-  }, [domainId, router]);
+    if (!settingsRepo || !weekPlanRepo) return;
+    Promise.all([settingsRepo.getSettings(), weekPlanRepo.listWeekPlans()])
+      .then(async ([settings, plans]) => {
+        const timeZone =
+          settings.weekTimeZone ||
+          Intl.DateTimeFormat().resolvedOptions().timeZone ||
+          'UTC';
+        const weekStartDay = settings.weekStartDay || 'sunday';
+        const preferNextWeek = plans.length === 0;
+        const weekStartISO = getWeekStartISO(
+          new Date(),
+          weekStartDay,
+          preferNextWeek,
+        );
+        const record = await weekPlanRepo.getWeekPlan(weekStartISO);
+        if (!record) {
+          router.replace('/week/plan');
+          return;
+        }
+        const normalized = applyDefaultDomainNames(record);
+        if (
+          normalized !== record ||
+          !normalized.weekTimeZone ||
+          !normalized.weekStartDay
+        ) {
+          await weekPlanRepo.saveWeekPlan({
+            ...normalized,
+            weekTimeZone: normalized.weekTimeZone || timeZone,
+            weekStartDay: normalized.weekStartDay || weekStartDay,
+          });
+        }
+        const withDerived = withDerivedPlannedHours(normalized);
+        setPlan(withDerived);
+        const found = withDerived.domains.find((item) => item.id === domainId);
+        if (!found) {
+          router.replace('/week/plan');
+          return;
+        }
+        setDomain(found);
+        setNameInput(found.name);
+      })
+      .catch((error) => setStatus(String(error)));
+  }, [domainId, router, settingsRepo, weekPlanRepo]);
 
   const handleSave = async (updatedDomain: WeekDomain) => {
-    if (!repository || !plan) {
+    if (!weekPlanRepo || !plan) {
       return;
     }
     const updatedPlan: WeekPlan = {
@@ -97,7 +90,7 @@ export default function WeekDomainPage() {
         item.id === updatedDomain.id ? updatedDomain : item,
       ),
     };
-    await repository.saveWeekPlan(updatedPlan);
+    await weekPlanRepo.saveWeekPlan(updatedPlan);
     setPlan(withDerivedPlannedHours(updatedPlan));
     setDomain(updatedDomain);
     setStatus('Saved.');

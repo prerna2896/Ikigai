@@ -3,10 +3,10 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { type Settings, type Profile } from '@ikigai/core';
-import { getLocalRepository } from '@ikigai/storage';
 import { OnboardingProgress } from '../../../components/OnboardingProgress';
 import OnboardingMonk from '../../../components/OnboardingMonk';
 import { OnboardingH1, OnboardingBody } from '../../../components/OnboardingTypography';
+import { useRepository } from '../../../components/RepositoryProvider';
 
 const toneOptions: Array<{
   label: string;
@@ -20,9 +20,7 @@ const toneOptions: Array<{
 
 export default function OnboardingTonePage() {
   const router = useRouter();
-  const [repository, setRepository] = useState<ReturnType<
-    typeof getLocalRepository
-  > | null>(null);
+  const { profileRepo, settingsRepo } = useRepository();
   const [preferredTone, setPreferredTone] = useState<Settings['preferredTone']>(
     null,
   );
@@ -30,46 +28,36 @@ export default function OnboardingTonePage() {
   const [profile, setProfile] = useState<Profile | null>(null);
 
   useEffect(() => {
-    try {
-      const repo = getLocalRepository();
-      setRepository(repo);
+    if (!profileRepo || !settingsRepo) return;
+    let cancelled = false;
+    profileRepo
+      .getProfile()
+      .then((profileRecord) => {
+        if (cancelled) return;
+        if (profileRecord) setProfile(profileRecord);
+      })
+      .catch((error) => {
+        if (!cancelled) setStatus(String(error));
+      });
 
-      // Load profile and settings asynchronously, but don't block repository
-      repo.getProfile()
-        .then((profileRecord) => {
-          if (!profileRecord) {
-            // Allow staying on page even without profile for testing
-            console.log('No profile found, but continuing...');
-            return;
-          }
-          setProfile(profileRecord);
-        })
-        .catch((error) => {
-          console.error('Profile loading error:', error);
-          setStatus(String(error));
-        });
-
-      repo.getSettings()
-        .then((settings) => {
-          setPreferredTone(settings.preferredTone ?? null);
-        })
-        .catch((error) => {
-          console.error('Settings loading error:', error);
-        });
-
-    } catch (error) {
-      console.error('Repository initialization error:', error);
-      setStatus(String(error));
-    }
-  }, [router]);
+    settingsRepo
+      .getSettings()
+      .then((settings) => {
+        if (!cancelled) setPreferredTone(settings.preferredTone ?? null);
+      })
+      .catch((error) => {
+        console.error('Settings loading error:', error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [profileRepo, settingsRepo]);
 
   const handleContinue = async () => {
-    if (!repository) {
-      return;
-    }
-    const settings = await repository.getSettings();
+    if (!settingsRepo) return;
+    const settings = await settingsRepo.getSettings();
     const nowIso = new Date().toISOString();
-    await repository.saveSettings({
+    await settingsRepo.saveSettings({
       ...settings,
       preferredTone,
       updatedAt: nowIso,
@@ -151,7 +139,7 @@ export default function OnboardingTonePage() {
             type="button"
             className="inline-flex items-center gap-2 rounded-full bg-accent px-6 py-3 min-h-12 text-sm font-medium text-white hover:bg-accent/90 transition-colors"
             onClick={() => void handleContinue()}
-            disabled={!repository}
+            disabled={!settingsRepo}
             data-testid="onboarding-next"
           >
             Continue <span aria-hidden>→</span>

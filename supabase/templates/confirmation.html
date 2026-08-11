@@ -1,0 +1,9 @@
+<!-- New-signup confirmation. Same dual-mode as magic_link.html so
+     first-time users get the same cross-device UX. -->
+<p>Welcome to Ikigai.</p>
+<p>Click the link below to confirm your email and sign in:</p>
+<p><a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=signup&next=%2F">Confirm and sign in</a></p>
+<p>Or, if you&rsquo;re signing in on a different device, enter this code on the sign-in screen:</p>
+<p style="font-size:24px;letter-spacing:4px;font-family:monospace;"><strong>{{ .Token }}</strong></p>
+<p>Both options expire in 60 minutes and can only be used once.</p>
+<p>If you didn&rsquo;t create an account, you can safely ignore this email.</p>

@@ -3,16 +3,14 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { type Profile } from '@ikigai/core';
-import { getLocalRepository } from '@ikigai/storage';
 import { OnboardingProgress } from '../../../components/OnboardingProgress';
 import OnboardingMonk from '../../../components/OnboardingMonk';
 import { OnboardingH1, OnboardingBody, OnboardingLabel } from '../../../components/OnboardingTypography';
+import { useRepository } from '../../../components/RepositoryProvider';
 
 export default function OnboardingContextPage() {
   const router = useRouter();
-  const [repository, setRepository] = useState<ReturnType<
-    typeof getLocalRepository
-  > | null>(null);
+  const { profileRepo, settingsRepo } = useRepository();
   const [status, setStatus] = useState<string | null>(null);
   const [profileName, setProfileName] = useState<string | null>(null);
   const [nameInput, setNameInput] = useState('');
@@ -20,26 +18,36 @@ export default function OnboardingContextPage() {
   const [isTyping, setIsTyping] = useState(false);
 
   useEffect(() => {
-    try {
-      const repo = getLocalRepository();
-      setRepository(repo);
-      Promise.all([repo.getProfile(), repo.getSettings()])
-        .then(([profileRecord]) => {
-          if (!profileRecord) {
-            setProfile(null);
-            return;
-          }
-          setProfile(profileRecord);
-          const trimmedName = profileRecord.name?.trim();
-          const firstName = trimmedName ? trimmedName.split(/\s+/)[0] : '';
-          setProfileName(firstName || null);
-          setNameInput(trimmedName || '');
-        })
-        .catch((error) => setStatus(String(error)));
-    } catch (error) {
-      setStatus(String(error));
-    }
-  }, [router]);
+    if (!profileRepo || !settingsRepo) return;
+    let cancelled = false;
+    Promise.all([profileRepo.getProfile(), settingsRepo.getSettings()])
+      .then(([profileRecord]) => {
+        if (cancelled) return;
+        if (!profileRecord) {
+          setProfile(null);
+          return;
+        }
+        // Guard: already-onboarded users landing here (stale bookmark,
+        // stale login "next" param, fresh sign-in where cloud already
+        // has their profile) skip straight to /. Editing your name
+        // later lives on /profile.
+        const trimmedName = profileRecord.name?.trim();
+        if (trimmedName) {
+          router.replace('/');
+          return;
+        }
+        setProfile(profileRecord);
+        const firstName = trimmedName ? trimmedName.split(/\s+/)[0] : '';
+        setProfileName(firstName || null);
+        setNameInput(trimmedName || '');
+      })
+      .catch((error) => {
+        if (!cancelled) setStatus(String(error));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [router, profileRepo, settingsRepo]);
 
 
   return (
@@ -114,7 +122,7 @@ export default function OnboardingContextPage() {
               type="button"
               className="inline-flex items-center rounded-full bg-accent px-6 py-3 text-sm font-medium text-white min-h-12"
               onClick={async () => {
-                if (!repository) {
+                if (!profileRepo) {
                   return;
                 }
                 const trimmed = nameInput.trim();
@@ -125,7 +133,7 @@ export default function OnboardingContextPage() {
 
                 if (!profile && trimmed) {
                   const nowIso = new Date().toISOString();
-                  await repository.saveProfile({
+                  await profileRepo.saveProfile({
                     id: crypto.randomUUID(),
                     name: trimmed,
                     reflections: [],
@@ -135,7 +143,7 @@ export default function OnboardingContextPage() {
                 }
                 router.replace('/onboarding/tone');
               }}
-              disabled={!repository}
+              disabled={!profileRepo}
               data-testid="onboarding-next"
             >
               Continue

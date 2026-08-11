@@ -450,6 +450,27 @@ export class LocalRepository
       },
     );
   }
+
+  // ─── Meta k/v (M4 migration marker + future one-off flags) ─────────────
+
+  async getMeta(key: string): Promise<string | null> {
+    const row = await this.db.meta.get(key);
+    return row?.value ?? null;
+  }
+
+  async setMeta(key: string, value: string): Promise<void> {
+    await this.db.meta.put({ key, value });
+  }
+
+  async listMetaKeys(prefix: string): Promise<string[]> {
+    // Dexie primary keys are strings; startsWith range is the cheap way
+    // to enumerate a namespace without a full-store scan on large stores.
+    // The `meta` store is tiny so this is largely aesthetic here.
+    return this.db.meta
+      .where('key')
+      .startsWith(prefix)
+      .primaryKeys();
+  }
 }
 
 let cachedRepository: LocalRepository | null = null;

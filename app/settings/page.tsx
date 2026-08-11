@@ -6,32 +6,29 @@ import {
   getBufferPercentForStrictness,
   type Settings,
 } from '@ikigai/core';
-import { getLocalRepository } from '@ikigai/storage';
 import SettingsForm from '../../components/SettingsForm';
+import { useRepository } from '../../components/RepositoryProvider';
 
 export default function SettingsPage() {
-  const [repository, setRepository] = useState<ReturnType<
-    typeof getLocalRepository
-  > | null>(null);
+  const { settingsRepo } = useRepository();
   const [settings, setSettings] = useState<Settings | null>(null);
   const [status, setStatus] = useState<string | null>(null);
 
   useEffect(() => {
-    try {
-      const repo = getLocalRepository();
-      setRepository(repo);
-      repo
-        .getSettings()
-        .then((record) => {
-          setSettings(record);
-        })
-        .catch((error) => {
-          setStatus(String(error));
-        });
-    } catch (error) {
-      setStatus(String(error));
-    }
-  }, []);
+    if (!settingsRepo) return;
+    let cancelled = false;
+    settingsRepo
+      .getSettings()
+      .then((record) => {
+        if (!cancelled) setSettings(record);
+      })
+      .catch((error) => {
+        if (!cancelled) setStatus(String(error));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [settingsRepo]);
 
   const handleSettingsChange = <K extends keyof Settings>(
     key: K,
@@ -53,9 +50,7 @@ export default function SettingsPage() {
   };
 
   const handleSave = async () => {
-    if (!settings || !repository) {
-      return;
-    }
+    if (!settings || !settingsRepo) return;
     const nowIso = new Date().toISOString();
     const derived = computeWeeklyCapacity({
       sleepHoursPerDay: settings.sleepHoursPerDay,
@@ -64,7 +59,7 @@ export default function SettingsPage() {
       classHoursPerWeek: settings.classHoursPerWeek,
       bufferPercent: getBufferPercentForStrictness(settings.strictness),
     });
-    await repository.saveSettings({
+    await settingsRepo.saveSettings({
       ...settings,
       bufferPercent: getBufferPercentForStrictness(settings.strictness),
       weeklyCapacityHoursDerived: derived.estimatedPlanForHours,
@@ -96,7 +91,7 @@ export default function SettingsPage() {
           onChange={handleSettingsChange}
           onSave={() => void handleSave()}
           saveLabel="Save changes"
-          disabled={!repository}
+          disabled={!settingsRepo}
         />
       ) : (
         <section className="rounded-2xl border border-slate-200 bg-surface p-6 shadow-sm">

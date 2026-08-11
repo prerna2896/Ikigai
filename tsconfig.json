@@ -18,7 +18,9 @@
     "paths": {
       "@ikigai/core": ["packages/core/src"],
       "@ikigai/storage": ["packages/storage/src"],
-      "@ikigai/insights": ["packages/insights/src"]
+      "@ikigai/insights": ["packages/insights/src"],
+      "@ikigai/db": ["packages/db/src"],
+      "@ikigai/cloud-storage": ["packages/cloud-storage/src"]
     },
     "plugins": [{ "name": "next" }]
   },

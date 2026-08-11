@@ -1,0 +1,2 @@
+insert into week_plans (id, user_id, week_start_iso, week_end_iso, week_start_day, week_time_zone)
+values (gen_random_uuid(), '9709fae8-0357-45b3-b7f9-b5cd81643811', '2026-01-12', '2026-01-18', 'monday', 'UTC');

@@ -1,2 +1,19 @@
 node_modules/
 .next/
+
+# Env — never commit real credentials
+.env
+.env.*.local
+.env.local
+
+# Test artefacts
+test-results/
+playwright-report/
+
+# Tooling / IDE
+.aider*
+.DS_Store
+
+# Supabase local runtime state (containers, volumes)
+supabase/.branches/
+supabase/.temp/

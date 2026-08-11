@@ -70,6 +70,16 @@ const schemaV10 = {
   ...schemaV9,
 };
 
+// v11: adds `meta` k/v store for M4's per-user cloud-migration marker.
+// Rows: { key: 'cloudMigratedAt:<userId>', value: <iso timestamp> }.
+// Also usable for other one-off meta later (Dexie schema is cheap).
+const schemaV11 = {
+  ...schemaV10,
+  meta: 'key',
+};
+
+export type MetaRow = { key: string; value: string };
+
 export class IkigaiDB extends Dexie {
   domains!: Table<Domain, string>;
   settings!: Table<Settings, string>;
@@ -81,6 +91,7 @@ export class IkigaiDB extends Dexie {
   draftTasks!: Table<DraftTask, string>;
   frozenWeeks!: Table<FrozenWeekSnapshot, string>;
   weekReviews!: Table<WeekReview, string>;
+  meta!: Table<MetaRow, string>;
 
   constructor() {
     super('ikigai');
@@ -94,6 +105,7 @@ export class IkigaiDB extends Dexie {
     this.version(8).stores(schemaV8);
     this.version(9).stores(schemaV9);
     this.version(10).stores(schemaV10);
+    this.version(11).stores(schemaV11);
   }
 }
 

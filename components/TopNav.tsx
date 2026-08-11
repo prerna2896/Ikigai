@@ -4,8 +4,10 @@ import { useEffect, useState, type ReactNode } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { getLocalRepository } from '@ikigai/storage';
 import ThemePicker from './ThemePicker';
+import { createClient as createSupabaseClient } from '../lib/supabase/client';
+import { useRepository } from './RepositoryProvider';
+import { useCloudSyncVersion } from './CloudSyncProvider';
 
 const iconClass = 'h-4 w-4';
 
@@ -64,27 +66,59 @@ const getInitials = (name: string | null | undefined) => {
 export default function TopNav() {
   const pathname = usePathname();
   const isOnboarding = pathname.startsWith('/onboarding');
+  const isAuthRoute = pathname.startsWith('/login') || pathname.startsWith('/auth');
   const isHome = pathname === '/';
   const [initials, setInitials] = useState('·');
   const [hasOnboarded, setHasOnboarded] = useState<boolean | null>(null);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const { profileRepo } = useRepository();
+  const cloudVersion = useCloudSyncVersion();
 
   useEffect(() => {
-    try {
-      const repo = getLocalRepository();
-      repo
-        .getProfile()
-        .then((profile) => {
-          setInitials(getInitials(profile?.name));
-          setHasOnboarded(Boolean(profile?.name));
-        })
-        .catch(() => {
-          setInitials('·');
-          setHasOnboarded(false);
-        });
-    } catch {
-      setInitials('·');
-      setHasOnboarded(false);
+    if (!profileRepo) {
+      // Auth still resolving — leave state at defaults until we know.
+      return;
     }
+    let cancelled = false;
+    profileRepo
+      .getProfile()
+      .then((profile) => {
+        if (cancelled) return;
+        setInitials(getInitials(profile?.name));
+        setHasOnboarded(Boolean(profile?.name));
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setInitials('·');
+        setHasOnboarded(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname, profileRepo, cloudVersion]);
+
+  // Subscribe to Supabase auth state. Refreshes on pathname change AND on
+  // any signIn/signOut event from another tab.
+  useEffect(() => {
+    const supabase = createSupabaseClient();
+    let cancelled = false;
+    supabase.auth
+      .getUser()
+      .then(({ data }: { data: { user: { email?: string } | null } }) => {
+        if (!cancelled) setUserEmail(data.user?.email ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setUserEmail(null);
+      });
+    const { data: sub } = supabase.auth.onAuthStateChange(
+      (_event: string, session: { user?: { email?: string } } | null) => {
+        setUserEmail(session?.user?.email ?? null);
+      },
+    );
+    return () => {
+      cancelled = true;
+      sub.subscription.unsubscribe();
+    };
   }, [pathname]);
 
   const isActive = (href: string) => {
@@ -158,6 +192,33 @@ export default function TopNav() {
         )}
         <div className="flex items-center gap-2">
           <ThemePicker />
+          {isAuthRoute ? null : userEmail ? (
+            // Signed-in state: no visible email — that's on the profile
+            // page. Just the Sign out affordance. title= gives a hover
+            // hint on desktop for anyone who wants to double-check
+            // which account they're in.
+            <form action="/auth/logout" method="post" title={userEmail}>
+              <button
+                type="submit"
+                data-testid="top-nav-logout"
+                className="rounded-full border border-slate-200 px-3 py-1 text-xs text-mutedText hover:text-text"
+              >
+                Sign out
+              </button>
+            </form>
+          ) : (
+            <Link
+              href={
+                pathname === '/' || pathname === '/login'
+                  ? '/login'
+                  : `/login?next=${encodeURIComponent(pathname)}`
+              }
+              data-testid="top-nav-login"
+              className="rounded-full border border-slate-200 px-3 py-1 text-xs text-mutedText hover:text-text"
+            >
+              Sign in
+            </Link>
+          )}
           <Link
             href="/profile"
             aria-label="Profile"

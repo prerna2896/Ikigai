@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { errorMessage } from '../../../lib/errors';
 import { useRouter } from 'next/navigation';
 import type {
   DomainTask,
@@ -17,7 +18,8 @@ import {
   PROFESSION_COMMITMENT_LABELS,
   suggestPrincipleForName,
 } from '@ikigai/core';
-import { getLocalRepository } from '@ikigai/storage';
+import { useRepository } from '../../../components/RepositoryProvider';
+import { useCloudSyncVersion } from '../../../components/CloudSyncProvider';
 import CapacityCard from '../../../components/CapacityCard';
 import PlanActionsMenu from '../../../components/PlanActionsMenu';
 import WeekGoals from '../../../components/WeekGoals';
@@ -89,9 +91,11 @@ const sumTaskHours = (logs: WeekLogEntry[]): Record<string, number> => {
 export default function WeekPlanPage() {
   const router = useRouter();
   const { theme } = useTheme();
-  const [repository, setRepository] = useState<ReturnType<
-    typeof getLocalRepository
-  > | null>(null);
+  // M2.3: all planner ops go through the provider — cloud when signed
+  // in, local when not.
+  const { profileRepo, settingsRepo, weekPlanRepo, weekLogRepo } =
+    useRepository();
+  const cloudVersion = useCloudSyncVersion();
   const [settings, setSettings] = useState<Settings | null>(null);
   const [weekPlan, setWeekPlan] = useState<WeekPlan | null>(null);
   const [lastWeekPlan, setLastWeekPlan] = useState<WeekPlan | null>(null);
@@ -135,100 +139,102 @@ export default function WeekPlanPage() {
   }, [sidebarOpen, selectedDomainId, selectedPrincipleId]);
 
   useEffect(() => {
-    try {
-      const repo = getLocalRepository();
-      setRepository(repo);
-      Promise.all([repo.getSettings(), repo.getProfile(), repo.listWeekPlans()])
-        .then(async ([settingsRecord, profile, plans]) => {
-          setSettings(settingsRecord);
-          if (!profile) {
-            router.replace('/onboarding/context');
-            return;
+    if (!profileRepo || !settingsRepo || !weekPlanRepo || !weekLogRepo) {
+      return;
+    }
+    Promise.all([
+      settingsRepo.getSettings(),
+      profileRepo.getProfile(),
+      weekPlanRepo.listWeekPlans(),
+    ])
+      .then(async ([settingsRecord, profile, plans]) => {
+        setSettings(settingsRecord);
+        if (!profile) {
+          router.replace('/onboarding/context');
+          return;
+        }
+        const timeZone =
+          settingsRecord.weekTimeZone ||
+          Intl.DateTimeFormat().resolvedOptions().timeZone ||
+          'UTC';
+        const weekStartDay = settingsRecord.weekStartDay || 'sunday';
+        const todayStartISO = getWeekStartISO(
+          new Date(),
+          weekStartDay,
+          false,
+        );
+        const sortedPlans = [...plans].sort((a, b) =>
+          a.weekStartISO < b.weekStartISO ? 1 : -1,
+        );
+        // Always plan the current week. If a plan exists for it, use that.
+        // Otherwise create a fresh draft for the current week. Stale and
+        // future-week plans never override the current-week intent.
+        const plan = await weekPlanRepo.getWeekPlan(todayStartISO);
+        const effectiveWeekStartISO = plan?.weekStartISO ?? todayStartISO;
+        const weekEndISO = getWeekEndISO(effectiveWeekStartISO);
+        const previousPlan = sortedPlans.find(
+          (candidate) => candidate.weekStartISO !== effectiveWeekStartISO,
+        );
+        if (plan) {
+          let normalized = applyDefaultDomainNames(plan);
+          if (
+            !normalized.weekEndISO ||
+            !normalized.weekStartDay ||
+            !normalized.weekTimeZone
+          ) {
+            normalized = {
+              ...normalized,
+              weekEndISO: normalized.weekEndISO || weekEndISO,
+              weekStartDay: normalized.weekStartDay || weekStartDay,
+              weekTimeZone: normalized.weekTimeZone || timeZone,
+            };
           }
-          const timeZone =
-            settingsRecord.weekTimeZone ||
-            Intl.DateTimeFormat().resolvedOptions().timeZone ||
-            'UTC';
-          const weekStartDay = settingsRecord.weekStartDay || 'sunday';
-          const todayStartISO = getWeekStartISO(
-            new Date(),
-            weekStartDay,
-            false,
-          );
-          const sortedPlans = [...plans].sort((a, b) =>
-            a.weekStartISO < b.weekStartISO ? 1 : -1,
-          );
-          // Always plan the current week. If a plan exists for it, use that.
-          // Otherwise create a fresh draft for the current week. Stale and
-          // future-week plans never override the current-week intent.
-          const plan = await repo.getWeekPlan(todayStartISO);
-          const effectiveWeekStartISO =
-            plan?.weekStartISO ?? todayStartISO;
-          const weekEndISO = getWeekEndISO(effectiveWeekStartISO);
-          const previousPlan = sortedPlans.find(
-            (candidate) => candidate.weekStartISO !== effectiveWeekStartISO,
-          );
-          if (plan) {
-            let normalized = applyDefaultDomainNames(plan);
-            if (
-              !normalized.weekEndISO ||
-              !normalized.weekStartDay ||
-              !normalized.weekTimeZone
-            ) {
-              normalized = {
-                ...normalized,
-                weekEndISO: normalized.weekEndISO || weekEndISO,
-                weekStartDay: normalized.weekStartDay || weekStartDay,
-                weekTimeZone: normalized.weekTimeZone || timeZone,
-              };
-            }
-            if (normalized !== plan) {
-              await repo.saveWeekPlan(normalized);
-            }
-            const derived = withDerivedPlannedHours(normalized);
-            setWeekPlan(derived);
-            setSelectedDomainId(null);
-            setSidebarOpen(false);
-            const currentLogs = await repo.getWeekLogs(derived.id);
-            setCurrentWeekTotals(sumTaskHours(currentLogs));
-            if (previousPlan) {
-              const derivedPrevious = withDerivedPlannedHours(previousPlan);
-              setLastWeekPlan(derivedPrevious);
-              const previousLogs = await repo.getWeekLogs(previousPlan.id);
-              setLastWeekTotals(sumTaskHours(previousLogs));
-            } else {
-              setLastWeekPlan(null);
-              setLastWeekTotals({});
-            }
-            return;
+          if (normalized !== plan) {
+            await weekPlanRepo.saveWeekPlan(normalized);
           }
-          const freshPlan = createDefaultWeekPlan(
-            effectiveWeekStartISO,
-            weekEndISO,
-            weekStartDay,
-            timeZone,
-          );
-          await repo.saveWeekPlan(freshPlan);
-          const derived = withDerivedPlannedHours(freshPlan);
+          const derived = withDerivedPlannedHours(normalized);
           setWeekPlan(derived);
           setSelectedDomainId(null);
           setSidebarOpen(false);
-          setCurrentWeekTotals({});
+          const currentLogs = await weekLogRepo.getWeekLogs(derived.id);
+          setCurrentWeekTotals(sumTaskHours(currentLogs));
           if (previousPlan) {
             const derivedPrevious = withDerivedPlannedHours(previousPlan);
             setLastWeekPlan(derivedPrevious);
-            const previousLogs = await repo.getWeekLogs(previousPlan.id);
+            const previousLogs = await weekLogRepo.getWeekLogs(
+              previousPlan.id,
+            );
             setLastWeekTotals(sumTaskHours(previousLogs));
           } else {
             setLastWeekPlan(null);
             setLastWeekTotals({});
           }
-        })
-        .catch((error) => setStatus(String(error)));
-    } catch (error) {
-      setStatus(String(error));
-    }
-  }, [router]);
+          return;
+        }
+        const freshPlan = createDefaultWeekPlan(
+          effectiveWeekStartISO,
+          weekEndISO,
+          weekStartDay,
+          timeZone,
+        );
+        await weekPlanRepo.saveWeekPlan(freshPlan);
+        const derived = withDerivedPlannedHours(freshPlan);
+        setWeekPlan(derived);
+        setSelectedDomainId(null);
+        setSidebarOpen(false);
+        setCurrentWeekTotals({});
+        if (previousPlan) {
+          const derivedPrevious = withDerivedPlannedHours(previousPlan);
+          setLastWeekPlan(derivedPrevious);
+          const previousLogs = await weekLogRepo.getWeekLogs(previousPlan.id);
+          setLastWeekTotals(sumTaskHours(previousLogs));
+        } else {
+          setLastWeekPlan(null);
+          setLastWeekTotals({});
+        }
+      })
+      .catch((error) => setStatus(errorMessage(error)));
+  }, [router, profileRepo, settingsRepo, weekPlanRepo, weekLogRepo, cloudVersion]);
 
   useEffect(() => {
     try {
@@ -237,7 +243,7 @@ export default function WeekPlanPage() {
         setDomainOverrides(JSON.parse(stored));
       }
     } catch (error) {
-      setStatus(String(error));
+      setStatus(errorMessage(error));
     }
   }, []);
 
@@ -321,10 +327,10 @@ export default function WeekPlanPage() {
       : null;
 
   const persistPlan = async (updated: WeekPlan, nextStatus?: string) => {
-    if (!repository) {
+    if (!weekPlanRepo) {
       return;
     }
-    await repository.saveWeekPlan(updated);
+    await weekPlanRepo.saveWeekPlan(updated);
     setWeekPlan(withDerivedPlannedHours(updated));
     if (nextStatus) {
       setStatus(nextStatus);
@@ -341,7 +347,7 @@ export default function WeekPlanPage() {
     try {
       window.localStorage.setItem(DOMAIN_OVERRIDE_KEY, JSON.stringify(nextOverrides));
     } catch (error) {
-      setStatus(String(error));
+      setStatus(errorMessage(error));
     }
   };
 
@@ -367,7 +373,7 @@ export default function WeekPlanPage() {
     hours: number,
     forcedDomainId?: string | null,
   ) => {
-    if (!weekPlan || !repository) {
+    if (!weekPlan || !weekPlanRepo) {
       return;
     }
     const trimmed = title.trim();
@@ -433,7 +439,7 @@ export default function WeekPlanPage() {
   };
 
   const handleAddDomain = async () => {
-    if (!repository || !weekPlan || weekPlan.domains.length >= 12) {
+    if (!weekPlanRepo || !weekPlan || weekPlan.domains.length >= 12) {
       return;
     }
     const name = makeNewDomainName(weekPlan);
@@ -561,7 +567,7 @@ export default function WeekPlanPage() {
   };
 
   const handleResetWeek = async () => {
-    if (!repository || !weekPlan || !settings) {
+    if (!weekPlanRepo || !weekPlan || !settings) {
       return;
     }
     const confirmed = window.confirm(
@@ -585,8 +591,8 @@ export default function WeekPlanPage() {
         weekStartDay,
         timeZone,
       );
-      await repository.deleteWeekPlan(previousId);
-      await repository.saveWeekPlan(freshPlan);
+      await weekPlanRepo.deleteWeekPlan(previousId);
+      await weekPlanRepo.saveWeekPlan(freshPlan);
       const derived = withDerivedPlannedHours(freshPlan);
       setWeekPlan(derived);
       setSelectedDomainId(null);
@@ -596,7 +602,7 @@ export default function WeekPlanPage() {
       setStatus('Week reset.');
       window.setTimeout(() => setStatus(null), 1500);
     } catch (error) {
-      setStatus(String(error));
+      setStatus(errorMessage(error));
     }
   };
 

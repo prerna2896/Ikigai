@@ -9,8 +9,9 @@ import type {
   WeekNote,
   WeekPlan,
 } from '@ikigai/core';
-import { getLocalRepository } from '@ikigai/storage';
 import { withDerivedPlannedHours } from '../plan/planUtils';
+import { useRepository } from '../../../components/RepositoryProvider';
+import { useCloudSyncVersion } from '../../../components/CloudSyncProvider';
 import {
   decodeReflectionNote,
   formatReflectionTimestamp,
@@ -56,20 +57,25 @@ export default function WeekRecapPage({
   params: { weekId: string };
 }) {
   const weekId = decodeURIComponent(params.weekId);
+  const { settingsRepo, weekPlanRepo, weekLogRepo, weekNoteRepo } =
+    useRepository();
+  const cloudVersion = useCloudSyncVersion();
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!settingsRepo || !weekPlanRepo || !weekLogRepo || !weekNoteRepo) {
+      return;
+    }
     let cancelled = false;
-    try {
-      const repo = getLocalRepository();
-      Promise.all([
-        repo.getSettings(),
-        repo.listWeekPlans(),
-        repo.getWeekLogs(weekId),
-        repo.listWeekNotes(weekId),
-      ])
-        .then(([settings, plans, logs, notes]: [
+    Promise.all([
+      settingsRepo.getSettings(),
+      weekPlanRepo.listWeekPlans(),
+      weekLogRepo.getWeekLogs(weekId),
+      weekNoteRepo.listWeekNotes(weekId),
+    ])
+      .then(
+        ([settings, plans, logs, notes]: [
           Settings,
           WeekPlan[],
           WeekLogEntry[],
@@ -92,17 +98,15 @@ export default function WeekRecapPage({
             notes,
             timeZone,
           });
-        })
-        .catch((err) => {
-          if (!cancelled) setError(String(err));
-        });
-    } catch (err) {
-      setError(String(err));
-    }
+        },
+      )
+      .catch((err) => {
+        if (!cancelled) setError(String(err));
+      });
     return () => {
       cancelled = true;
     };
-  }, [weekId]);
+  }, [weekId, settingsRepo, weekPlanRepo, weekLogRepo, weekNoteRepo, cloudVersion]);
 
   return (
     <main

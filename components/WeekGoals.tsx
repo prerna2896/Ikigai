@@ -2,14 +2,18 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { WeekGoal, WeekPlan } from '@ikigai/core';
-import { getLocalRepository } from '@ikigai/storage';
+import type { WeekPlanRepository } from '@ikigai/storage';
+import { useRepository } from './RepositoryProvider';
 
 const MAX_GOALS = 3;
 
 const ensureGoals = (plan: WeekPlan): WeekGoal[] => plan.goals ?? [];
 
-const persistGoals = async (plan: WeekPlan, goals: WeekGoal[]) => {
-  const repo = getLocalRepository();
+const persistGoals = async (
+  repo: WeekPlanRepository,
+  plan: WeekPlan,
+  goals: WeekGoal[],
+) => {
   const next: WeekPlan = { ...plan, goals };
   await repo.saveWeekPlan(next);
   return next;
@@ -26,6 +30,7 @@ export default function WeekGoals({
   mode,
   onPlanChange,
 }: WeekGoalsProps) {
+  const { weekPlanRepo } = useRepository();
   const [goals, setGoals] = useState<WeekGoal[]>(() => ensureGoals(plan));
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -41,8 +46,9 @@ export default function WeekGoals({
 
   const commit = async (nextGoals: WeekGoal[]) => {
     setGoals(nextGoals);
+    if (!weekPlanRepo) return;
     try {
-      const nextPlan = await persistGoals(plan, nextGoals);
+      const nextPlan = await persistGoals(weekPlanRepo, plan, nextGoals);
       onPlanChange?.(nextPlan);
     } catch (err) {
       setError(String(err));

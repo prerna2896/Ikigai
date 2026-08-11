@@ -3,6 +3,9 @@ import type { ReactNode } from 'react';
 import BottomNav from '../components/BottomNav';
 import TopNav from '../components/TopNav';
 import { ThemeProvider } from '../components/ThemeProvider';
+import { RepositoryProvider } from '../components/RepositoryProvider';
+import { CloudSyncProvider } from '../components/CloudSyncProvider';
+import { CloudMigrationRunner } from '../components/CloudMigrationRunner';
 
 export const metadata = {
   title: 'Ikigai',
@@ -39,9 +42,14 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       </head>
       <body className="min-h-screen pb-[calc(env(safe-area-inset-bottom)+56px)] md:pb-0">
         <ThemeProvider>
-          <TopNav />
-          {children}
-          <BottomNav />
+          <RepositoryProvider>
+            <CloudSyncProvider>
+              <CloudMigrationRunner />
+              <TopNav />
+              {children}
+              <BottomNav />
+            </CloudSyncProvider>
+          </RepositoryProvider>
         </ThemeProvider>
       </body>
     </html>

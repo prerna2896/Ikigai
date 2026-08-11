@@ -3,11 +3,11 @@
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getBufferPercentForStrictness, type Settings } from '@ikigai/core';
-import { getLocalRepository } from '@ikigai/storage';
 import { settingsSteps } from './onboardingConfig';
 import { OnboardingProgress } from '../../../components/OnboardingProgress';
 import OnboardingMonk from '../../../components/OnboardingMonk';
 import { OnboardingH1, OnboardingBody, OnboardingLabel } from '../../../components/OnboardingTypography';
+import { useRepository } from '../../../components/RepositoryProvider';
 
 type WeeklyCapacityMode = 'auto' | 'custom';
 
@@ -38,9 +38,7 @@ const professionOptions: Array<{
 function OnboardingSettingsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [repository, setRepository] = useState<ReturnType<
-    typeof getLocalRepository
-  > | null>(null);
+  const { profileRepo, settingsRepo } = useRepository();
   const [activeStepIndex, setActiveStepIndex] = useState(0);
   const [weeklyCapacityMode, setWeeklyCapacityMode] =
     useState<WeeklyCapacityMode>('auto');
@@ -75,20 +73,20 @@ function OnboardingSettingsContent() {
   }, [searchParams]);
 
   useEffect(() => {
-    try {
-      const repo = getLocalRepository();
-      setRepository(repo);
-      Promise.all([repo.getSettings(), repo.getProfile()])
-        .then(([settings, profile]) => {
-          if (!profile) {
-            router.replace('/onboarding/context');
-            return;
-          }
-          if (profile.reflections.length === 0) {
-            router.replace('/onboarding/reflection');
-            return;
-          }
-          setWeeklyCapacityHours(settings.weeklyCapacityHours);
+    if (!profileRepo || !settingsRepo) return;
+    let cancelled = false;
+    Promise.all([settingsRepo.getSettings(), profileRepo.getProfile()])
+      .then(([settings, profile]) => {
+        if (cancelled) return;
+        if (!profile) {
+          router.replace('/onboarding/context');
+          return;
+        }
+        if (profile.reflections.length === 0) {
+          router.replace('/onboarding/reflection');
+          return;
+        }
+        setWeeklyCapacityHours(settings.weeklyCapacityHours);
           // Treat as auto if the stored value matches derived, or if it's
           // still the hardcoded default (40h) meaning the user hasn't set it yet.
           const isAuto =
@@ -110,11 +108,13 @@ function OnboardingSettingsContent() {
           setJobHoursPerWeek(settings.jobHoursPerWeek);
           setClassHoursPerWeek(settings.classHoursPerWeek);
         })
-        .catch((error) => setStatus(String(error)));
-    } catch (error) {
-      setStatus(String(error));
-    }
-  }, [router]);
+      .catch((error) => {
+        if (!cancelled) setStatus(String(error));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [router, profileRepo, settingsRepo]);
 
   const activeStep = settingsSteps[activeStepIndex];
   const isLastStep = activeStepIndex === settingsSteps.length - 1;
@@ -152,9 +152,7 @@ function OnboardingSettingsContent() {
   };
 
   const handleComplete = async () => {
-    if (!repository) {
-      return;
-    }
+    if (!settingsRepo) return;
     const nowIso = new Date().toISOString();
     const isStudentSelection = professionType === 'student';
     const derivedHours = Math.round(168 * (1 - bufferPercent / 100));
@@ -178,7 +176,7 @@ function OnboardingSettingsContent() {
       createdAt: nowIso,
       updatedAt: nowIso,
     };
-    await repository.saveSettings(settings);
+    await settingsRepo.saveSettings(settings);
     router.replace('/week/plan');
   };
 
@@ -535,7 +533,7 @@ function OnboardingSettingsContent() {
               type="button"
               className="rounded-full bg-accent px-6 py-3 min-h-12 text-sm font-medium text-white hover:bg-accent/90 transition-colors"
               onClick={() => void handleComplete()}
-              disabled={!repository}
+              disabled={!settingsRepo}
               data-testid="onboarding-finish"
             >
               Finish setup
@@ -545,7 +543,7 @@ function OnboardingSettingsContent() {
               type="button"
               className="rounded-full bg-accent px-6 py-3 min-h-12 text-sm font-medium text-white hover:bg-accent/90 transition-colors"
               onClick={handleNext}
-              disabled={!repository}
+              disabled={!settingsRepo}
               data-testid="onboarding-next"
             >
               Continue
