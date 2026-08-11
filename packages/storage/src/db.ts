@@ -78,7 +78,29 @@ const schemaV11 = {
   meta: 'key',
 };
 
+// v12: adds `pending_mutations` — the client-side offline write queue.
+// When a signed-in user tries to write while offline (or the fetch
+// otherwise fails as a network error), the write is mirrored to Dexie
+// AND appended here for later replay against Supabase. This is the
+// DEXIE queue — distinct from the server-side `pending_mutations`
+// audit table in the Supabase schema.
+// Indexes: `userId` (drain filter) and `createdAt` (FIFO ordering).
+const schemaV12 = {
+  ...schemaV11,
+  pending_mutations: '++id, userId, createdAt',
+};
+
 export type MetaRow = { key: string; value: string };
+
+export type PendingMutation = {
+  id: number;
+  createdAt: string;
+  userId: string;
+  op: string;
+  args: unknown;
+  retries: number;
+  lastError: string | null;
+};
 
 export class IkigaiDB extends Dexie {
   domains!: Table<Domain, string>;
@@ -92,6 +114,7 @@ export class IkigaiDB extends Dexie {
   frozenWeeks!: Table<FrozenWeekSnapshot, string>;
   weekReviews!: Table<WeekReview, string>;
   meta!: Table<MetaRow, string>;
+  pending_mutations!: Table<PendingMutation, number>;
 
   constructor() {
     super('ikigai');
@@ -106,6 +129,7 @@ export class IkigaiDB extends Dexie {
     this.version(9).stores(schemaV9);
     this.version(10).stores(schemaV10);
     this.version(11).stores(schemaV11);
+    this.version(12).stores(schemaV12);
   }
 }
 

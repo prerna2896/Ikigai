@@ -8,6 +8,7 @@ import ThemePicker from './ThemePicker';
 import { createClient as createSupabaseClient } from '../lib/supabase/client';
 import { useRepository } from './RepositoryProvider';
 import { useCloudSyncVersion } from './CloudSyncProvider';
+import { usePendingMutationsCount } from './PendingMutationsProvider';
 
 const iconClass = 'h-4 w-4';
 
@@ -73,6 +74,7 @@ export default function TopNav() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const { profileRepo } = useRepository();
   const cloudVersion = useCloudSyncVersion();
+  const pendingCount = usePendingMutationsCount();
 
   useEffect(() => {
     if (!profileRepo) {
@@ -219,14 +221,27 @@ export default function TopNav() {
               Sign in
             </Link>
           )}
-          <Link
-            href="/profile"
-            aria-label="Profile"
-            data-testid="home-tab-profile"
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-accent text-xs font-semibold tracking-wide text-white shadow-sm transition-opacity hover:opacity-90"
-          >
-            {initials}
-          </Link>
+          <div className="relative">
+            <Link
+              href="/profile"
+              aria-label="Profile"
+              data-testid="home-tab-profile"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-accent text-xs font-semibold tracking-wide text-white shadow-sm transition-opacity hover:opacity-90"
+            >
+              {initials}
+            </Link>
+            {pendingCount > 0 ? (
+              // Subtle amber pill on the corner — communicates "we're
+              // holding N writes for you" without pulling focus.
+              <span
+                data-testid="top-nav-unsynced-badge"
+                title={`${pendingCount} unsynced ${pendingCount === 1 ? 'change' : 'changes'} waiting to sync`}
+                className="pointer-events-none absolute -top-1 -right-1 min-w-[16px] rounded-full bg-amber-500 px-1 text-[10px] font-semibold leading-4 text-white shadow-sm"
+              >
+                {pendingCount}
+              </span>
+            ) : null}
+          </div>
         </div>
       </div>
     </header>
