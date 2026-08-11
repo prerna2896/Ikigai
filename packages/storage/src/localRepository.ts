@@ -17,7 +17,7 @@ import {
   type WeekPlan,
 } from '@ikigai/core';
 import { z } from 'zod';
-import { createDb, IkigaiDB } from './db';
+import { createDb, IkigaiDB, type PendingMutation } from './db';
 import type {
   DomainRepository,
   ProfileRepository,
@@ -470,6 +470,65 @@ export class LocalRepository
       .where('key')
       .startsWith(prefix)
       .primaryKeys();
+  }
+
+  // ─── Pending mutations (offline write queue) ───────────────────────────
+  //
+  // Backs OfflineAwareCloudRepository. When a signed-in user makes a
+  // write while offline (or the write fails with a network-shaped
+  // error), we mirror the write to Dexie AND enqueue an entry here so
+  // it can be replayed later. Ordering matters: replay is FIFO by
+  // createdAt so that dependent mutations (e.g. saveWeekPlan then
+  // saveWeekLog referencing tasks in that plan) don't get flipped and
+  // fail on a missing FK.
+
+  async enqueueMutation(
+    entry: Omit<PendingMutation, 'id' | 'createdAt' | 'retries' | 'lastError'>,
+  ): Promise<number> {
+    const row = {
+      createdAt: new Date().toISOString(),
+      userId: entry.userId,
+      op: entry.op,
+      args: entry.args,
+      retries: 0,
+      lastError: null,
+    } as Omit<PendingMutation, 'id'>;
+    // Dexie's auto-increment PK returns the assigned id from add().
+    return (await this.db.pending_mutations.add(row as PendingMutation)) as number;
+  }
+
+  async listPendingMutations(userId: string): Promise<PendingMutation[]> {
+    // Filter by userId first (indexed), then sort — Dexie's `where`
+    // returns a Collection that can be `.sortBy`'d in-memory. The queue
+    // is expected to be small (≤ a few dozen rows), so in-memory sort
+    // is fine and keeps the code simple.
+    const rows = await this.db.pending_mutations
+      .where('userId')
+      .equals(userId)
+      .toArray();
+    rows.sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0));
+    return rows;
+  }
+
+  async removePendingMutation(id: number): Promise<void> {
+    await this.db.pending_mutations.delete(id);
+  }
+
+  async updatePendingMutationError(id: number, error: string): Promise<void> {
+    // Retries are incremented here (not at enqueue) so the queue drainer
+    // owns the retry policy end-to-end. Callers only need to hand us
+    // the error message.
+    const existing = await this.db.pending_mutations.get(id);
+    if (!existing) return;
+    await this.db.pending_mutations.put({
+      ...existing,
+      retries: existing.retries + 1,
+      lastError: error,
+    });
+  }
+
+  async countPendingMutations(userId: string): Promise<number> {
+    return this.db.pending_mutations.where('userId').equals(userId).count();
   }
 }
 

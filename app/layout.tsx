@@ -6,6 +6,7 @@ import { ThemeProvider } from '../components/ThemeProvider';
 import { RepositoryProvider } from '../components/RepositoryProvider';
 import { CloudSyncProvider } from '../components/CloudSyncProvider';
 import { CloudMigrationRunner } from '../components/CloudMigrationRunner';
+import { PendingMutationsProvider } from '../components/PendingMutationsProvider';
 
 export const metadata = {
   title: 'Ikigai',
@@ -44,10 +45,12 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <ThemeProvider>
           <RepositoryProvider>
             <CloudSyncProvider>
-              <CloudMigrationRunner />
-              <TopNav />
-              {children}
-              <BottomNav />
+              <PendingMutationsProvider>
+                <CloudMigrationRunner />
+                <TopNav />
+                {children}
+                <BottomNav />
+              </PendingMutationsProvider>
             </CloudSyncProvider>
           </RepositoryProvider>
         </ThemeProvider>
