@@ -1,5 +1,13 @@
 'use client';
 
+// Force runtime rendering. The Supabase client this page instantiates
+// needs NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY,
+// which aren't guaranteed to be present in the build environment
+// (Vercel builds without the runtime env vars until deploy time).
+// Static prerender would then explode with "@supabase/ssr: Your
+// project's URL and API key are required" during Export.
+export const dynamic = 'force-dynamic';
+
 import { useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -25,7 +33,9 @@ type Status =
   | { kind: 'error'; message: string };
 
 function LoginForm() {
-  const supabase = createClient();
+  // createClient() is called lazily inside handlers, not at render-time,
+  // because it reads env vars synchronously and would blow up during
+  // build-time static evaluation if those vars are absent.
   const router = useRouter();
   const params = useSearchParams();
   const nextPath = params.get('next') || '/';
@@ -53,7 +63,7 @@ function LoginForm() {
       window.location.origin,
     ).toString();
 
-    const { error } = await supabase.auth.signInWithOtp({
+    const { error } = await createClient().auth.signInWithOtp({
       email: address,
       options: { emailRedirectTo },
     });
@@ -105,7 +115,7 @@ function LoginForm() {
     // ships in every magic-link/signup email as {{ .Token }}. Works
     // cross-device: user reads the code on their phone, types it on
     // the iPad.
-    const { error } = await supabase.auth.verifyOtp({
+    const { error } = await createClient().auth.verifyOtp({
       email: trimmedEmail,
       token: trimmedCode,
       type: 'email',
