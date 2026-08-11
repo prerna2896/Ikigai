@@ -19,9 +19,22 @@ export async function updateSession(
 ): Promise<SessionResult> {
   let response = NextResponse.next({ request: { headers: request.headers } });
 
+  // Degrade gracefully when Supabase env vars aren't configured on the
+  // running deployment (e.g. a Vercel preview built before env vars
+  // were added, or a self-hoster who hasn't wired up auth yet).
+  // Without this guard, `createServerClient` throws on *every* request
+  // and the entire app 500s, including the anonymous-first routes that
+  // shouldn't need auth at all. Treat missing-env as "no session" so
+  // the app still serves the Dexie-local experience.
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return { response, user: null };
+  }
+
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    supabaseUrl,
+    supabaseAnonKey,
     {
       cookies: {
         get(name: string) {
