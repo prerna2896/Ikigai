@@ -3,18 +3,16 @@
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { type Profile } from '@ikigai/core';
-import { getLocalRepository } from '@ikigai/storage';
 import { reflectionQuestions, OTHER_SENTINEL } from './questions';
 import { OnboardingProgress } from '../../../components/OnboardingProgress';
 import OnboardingMonk from '../../../components/OnboardingMonk';
 import { OnboardingH1, OnboardingBody } from '../../../components/OnboardingTypography';
+import { useRepository } from '../../../components/RepositoryProvider';
 
 function OnboardingReflectionContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [repository, setRepository] = useState<ReturnType<
-    typeof getLocalRepository
-  > | null>(null);
+  const { profileRepo, settingsRepo } = useRepository();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<string | null>(null);
@@ -33,30 +31,32 @@ function OnboardingReflectionContent() {
   const isLast = currentIndex === totalQuestions - 1;
 
   useEffect(() => {
-    try {
-      const repo = getLocalRepository();
-      setRepository(repo);
-      Promise.all([repo.getProfile(), repo.getSettings()])
-        .then(([profileRecord]) => {
-          if (!profileRecord) {
-            router.replace('/onboarding/context');
-            return;
-          }
-          setProfile(profileRecord);
-          const existingAnswers = profileRecord.reflections.reduce(
-            (acc, reflection) => {
-              acc[reflection.questionId] = reflection.answer;
-              return acc;
-            },
-            {} as Record<string, string>,
-          );
-          setAnswers(existingAnswers);
-        })
-        .catch((error) => setStatus(String(error)));
-    } catch (error) {
-      setStatus(String(error));
-    }
-  }, [router]);
+    if (!profileRepo || !settingsRepo) return;
+    let cancelled = false;
+    Promise.all([profileRepo.getProfile(), settingsRepo.getSettings()])
+      .then(([profileRecord]) => {
+        if (cancelled) return;
+        if (!profileRecord) {
+          router.replace('/onboarding/context');
+          return;
+        }
+        setProfile(profileRecord);
+        const existingAnswers = profileRecord.reflections.reduce(
+          (acc, reflection) => {
+            acc[reflection.questionId] = reflection.answer;
+            return acc;
+          },
+          {} as Record<string, string>,
+        );
+        setAnswers(existingAnswers);
+      })
+      .catch((error) => {
+        if (!cancelled) setStatus(String(error));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [router, profileRepo, settingsRepo]);
 
   const handleAnswerChange = (questionId: string, answer: string) => {
     setAnswers((prev) => ({
@@ -66,9 +66,7 @@ function OnboardingReflectionContent() {
   };
 
   const persistAndContinue = async () => {
-    if (!repository || !profile) {
-      return;
-    }
+    if (!profileRepo || !profile) return;
     const nowIso = new Date().toISOString();
     const reflections = reflectionQuestions.map((question) => ({
       questionId: question.id,
@@ -79,7 +77,7 @@ function OnboardingReflectionContent() {
       reflections,
       updatedAt: nowIso,
     };
-    await repository.saveProfile(updatedProfile);
+    await profileRepo.saveProfile(updatedProfile);
     router.replace('/onboarding/settings');
   };
 
@@ -232,7 +230,7 @@ function OnboardingReflectionContent() {
           type="button"
           className="inline-flex items-center gap-2 rounded-full bg-accent px-6 py-3 font-medium text-white min-h-12 text-sm"
           onClick={handleNext}
-          disabled={!repository || !profile}
+          disabled={!profileRepo || !profile}
           data-testid="onboarding-next"
         >
           {isLast ? 'Continue' : 'Next'} <span aria-hidden>→</span>

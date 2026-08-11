@@ -3,7 +3,8 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { getLocalRepository } from '@ikigai/storage';
+import { useRepository } from './RepositoryProvider';
+import { useCloudSyncVersion } from './CloudSyncProvider';
 
 const iconClass = 'h-5 w-5';
 
@@ -89,18 +90,24 @@ const tabs: ReadonlyArray<{
 export default function BottomNav() {
   const pathname = usePathname();
   const [hasOnboarded, setHasOnboarded] = useState<boolean | null>(null);
+  const { profileRepo } = useRepository();
+  const cloudVersion = useCloudSyncVersion();
 
   useEffect(() => {
-    try {
-      const repo = getLocalRepository();
-      repo
-        .getProfile()
-        .then((profile) => setHasOnboarded(Boolean(profile?.name)))
-        .catch(() => setHasOnboarded(false));
-    } catch {
-      setHasOnboarded(false);
-    }
-  }, [pathname]);
+    if (!profileRepo) return;
+    let cancelled = false;
+    profileRepo
+      .getProfile()
+      .then((profile) => {
+        if (!cancelled) setHasOnboarded(Boolean(profile?.name));
+      })
+      .catch(() => {
+        if (!cancelled) setHasOnboarded(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname, profileRepo, cloudVersion]);
 
   if (pathname.startsWith('/onboarding') || !hasOnboarded) {
     return null;

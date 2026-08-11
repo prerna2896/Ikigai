@@ -1,10 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { errorMessage } from '../lib/errors';
 import Image from 'next/image';
 import Link from 'next/link';
 import type { Profile, Settings, WeekPlan } from '@ikigai/core';
-import { getLocalRepository } from '@ikigai/storage';
 import LogPanel from '../components/LogPanel';
 import {
   daysSinceISO,
@@ -12,6 +12,8 @@ import {
   type CurrentWeekStatus,
 } from '../lib/weekPosition';
 import { withDerivedPlannedHours } from './week/plan/planUtils';
+import { useRepository } from '../components/RepositoryProvider';
+import { useCloudSyncVersion } from '../components/CloudSyncProvider';
 
 type LoadState =
   | { kind: 'loading' }
@@ -76,20 +78,30 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState<Date>(() => new Date());
 
+  const { profileRepo, settingsRepo, weekPlanRepo } = useRepository();
+  const cloudVersion = useCloudSyncVersion();
+
   useEffect(() => {
+    // Wait for the RepositoryProvider to hand us repos. Signed-out
+    // gets a local Dexie repo (anonymous-first) — the same code path
+    // runs regardless of auth state.
+    if (!profileRepo || !settingsRepo || !weekPlanRepo) return;
     setNow(new Date());
     let cancelled = false;
     try {
-      const repo = getLocalRepository();
       Promise.all([
-        repo.getProfile(),
-        repo.getSettings(),
-        repo.listWeekPlans(),
+        profileRepo.getProfile(),
+        settingsRepo.getSettings(),
+        weekPlanRepo.listWeekPlans(),
       ])
         .then(([profileRecord, settingsRecord, plans]) => {
           if (cancelled) return;
           const hasOnboarded = Boolean(profileRecord?.name);
-          if (!hasOnboarded && plans.length === 0) {
+          if (!hasOnboarded) {
+            // New user: no cloud profile yet. Show the Begin CTA,
+            // regardless of any stale local Dexie plans (those belong
+            // to whoever used this browser before — a previous email,
+            // or a pre-cloud session).
             setState({ kind: 'no-onboarding' });
             return;
           }
@@ -113,15 +125,15 @@ export default function HomePage() {
           });
         })
         .catch((err) => {
-          if (!cancelled) setError(String(err));
+          if (!cancelled) setError(errorMessage(err));
         });
     } catch (err) {
-      setError(String(err));
+      setError(errorMessage(err));
     }
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [profileRepo, settingsRepo, weekPlanRepo, cloudVersion]);
 
   const handlePlanChange = (next: WeekPlan) => {
     setState((prev) => {
@@ -216,6 +228,10 @@ export default function HomePage() {
 }
 
 function NoOnboarding() {
+  // Anonymous-first: everyone lands on Begin. Users can sign in from
+  // the top nav at any time — sign-in triggers M4 which lifts whatever
+  // local data they've accumulated into cloud under their user_id.
+  const cta = { href: '/onboarding/context', label: 'Begin' };
   return (
     <section
       data-testid="welcome-screen"
@@ -249,11 +265,11 @@ function NoOnboarding() {
         with what matters to you. Discover your Ikigai.
       </p>
       <Link
-        href="/onboarding/context"
+        href={cta.href}
         className="inline-flex items-center gap-2 rounded-xl bg-accent px-6 py-3 text-base font-medium text-white shadow-sm transition-opacity hover:opacity-90"
         data-testid="home-cta-get-started"
       >
-        Begin <span aria-hidden>→</span>
+        {cta.label} <span aria-hidden>→</span>
       </Link>
       <p className="pt-4 text-xs text-mutedText">
         A self-alignment mirror.

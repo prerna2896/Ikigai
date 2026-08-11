@@ -1,0 +1,13 @@
+<!-- Minimal functional template with two ways to sign in:
+     1. Click the link (opens in whatever browser it's opened in — safe
+        cross-browser thanks to token_hash / verifyOtp).
+     2. Type the 6-digit code into the "Have a code?" section of /login
+        on your other device.
+     Branded version deferred to docs/specs/email-template.md. -->
+<p>Hi,</p>
+<p>Click the link below to sign in to Ikigai:</p>
+<p><a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=magiclink&next=%2F">Sign in to Ikigai</a></p>
+<p>Or, if you&rsquo;re signing in on a different device, enter this code on the sign-in screen:</p>
+<p style="font-size:24px;letter-spacing:4px;font-family:monospace;"><strong>{{ .Token }}</strong></p>
+<p>Both options expire in 60 minutes and can only be used once.</p>
+<p>If you didn&rsquo;t request this, you can safely ignore this email.</p>

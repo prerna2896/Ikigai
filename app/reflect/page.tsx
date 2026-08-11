@@ -1,10 +1,10 @@
 'use client';
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { errorMessage } from '../../lib/errors';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import type { WeekNote, WeekPlan } from '@ikigai/core';
-import { getLocalRepository } from '@ikigai/storage';
 import {
   decodeReflectionNote,
   encodeReflectionNote,
@@ -13,6 +13,9 @@ import {
   type ParsedReflectionNote,
   type ReflectionCategoryId,
 } from '../../lib/reflectionNotes';
+import { useRepository } from '../../components/RepositoryProvider';
+import { useCloudSyncVersion } from '../../components/CloudSyncProvider';
+import type { WeekNoteRepository } from '@ikigai/storage';
 
 type CategoryId = ReflectionCategoryId;
 type ParsedNote = ParsedReflectionNote;
@@ -66,6 +69,8 @@ export default function ReflectPage() {
 
 function ReflectPageContent() {
   const searchParams = useSearchParams();
+  const { weekPlanRepo, weekNoteRepo } = useRepository();
+  const cloudVersion = useCloudSyncVersion();
   const initialView: ViewMode =
     searchParams.get('view') === 'history' ? 'history' : 'add';
   const [view, setView] = useState<ViewMode>(initialView);
@@ -90,40 +95,38 @@ function ReflectPageContent() {
   const [checkInStatus, setCheckInStatus] = useState<string | null>(null);
   const [checkInError, setCheckInError] = useState<string | null>(null);
 
-  const refreshLatestNotes = useCallback(async (plan: WeekPlan) => {
-    const repo = getLocalRepository();
-    const records = await repo.listWeekNotes(plan.id);
-    const parsed = records.map(decodeReflectionNote);
-    parsed.sort((a, b) =>
-      a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0,
-    );
-    setNotes(parsed);
-  }, []);
+  const refreshLatestNotes = useCallback(
+    async (repo: WeekNoteRepository, plan: WeekPlan) => {
+      const records = await repo.listWeekNotes(plan.id);
+      const parsed = records.map(decodeReflectionNote);
+      parsed.sort((a, b) =>
+        a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0,
+      );
+      setNotes(parsed);
+    },
+    [],
+  );
 
   useEffect(() => {
+    if (!weekPlanRepo || !weekNoteRepo) return;
     let cancelled = false;
-    try {
-      const repo = getLocalRepository();
-      repo
-        .listWeekPlans()
-        .then(async (plans) => {
-          if (cancelled || plans.length === 0) return;
-          const sorted = [...plans].sort((a, b) =>
-            a.weekStartISO < b.weekStartISO ? 1 : -1,
-          );
-          setLatestWeek(sorted[0]);
-          await refreshLatestNotes(sorted[0]);
-        })
-        .catch((err) => {
-          if (!cancelled) setError(String(err));
-        });
-    } catch (err) {
-      setError(String(err));
-    }
+    weekPlanRepo
+      .listWeekPlans()
+      .then(async (plans) => {
+        if (cancelled || plans.length === 0) return;
+        const sorted = [...plans].sort((a, b) =>
+          a.weekStartISO < b.weekStartISO ? 1 : -1,
+        );
+        setLatestWeek(sorted[0]);
+        await refreshLatestNotes(weekNoteRepo, sorted[0]);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(errorMessage(err));
+      });
     return () => {
       cancelled = true;
     };
-  }, [refreshLatestNotes]);
+  }, [refreshLatestNotes, weekPlanRepo, weekNoteRepo, cloudVersion]);
 
   useEffect(() => {
     if (!activeCategoryId) return;
@@ -183,10 +186,10 @@ function ReflectPageContent() {
       setError('Set up a week plan to save reflections.');
       return;
     }
+    if (!weekNoteRepo) return;
     try {
       setIsSaving(true);
       setError(null);
-      const repo = getLocalRepository();
       const nowIso = new Date().toISOString();
       const newNote: WeekNote = {
         id: crypto.randomUUID(),
@@ -195,13 +198,13 @@ function ReflectPageContent() {
         createdAt: nowIso,
         updatedAt: nowIso,
       };
-      await repo.saveWeekNote(newNote);
-      await refreshLatestNotes(latestWeek);
+      await weekNoteRepo.saveWeekNote(newNote);
+      await refreshLatestNotes(weekNoteRepo, latestWeek);
       setJustSavedId(newNote.id);
       setDraft('');
       closeModal();
     } catch (err) {
-      setError(String(err));
+      setError(errorMessage(err));
     } finally {
       setIsSaving(false);
     }
@@ -218,10 +221,10 @@ function ReflectPageContent() {
       setCheckInError('Pick an emoji or add a word.');
       return;
     }
+    if (!weekNoteRepo) return;
     try {
       setIsSavingCheckIn(true);
       setCheckInError(null);
-      const repo = getLocalRepository();
       const nowIso = new Date().toISOString();
       const newNote: WeekNote = {
         id: crypto.randomUUID(),
@@ -232,14 +235,14 @@ function ReflectPageContent() {
         createdAt: nowIso,
         updatedAt: nowIso,
       };
-      await repo.saveWeekNote(newNote);
-      await refreshLatestNotes(latestWeek);
+      await weekNoteRepo.saveWeekNote(newNote);
+      await refreshLatestNotes(weekNoteRepo, latestWeek);
       setCheckInEmoji(null);
       setCheckInText('');
       setCheckInStatus('Logged.');
       window.setTimeout(() => setCheckInStatus(null), 1500);
     } catch (err) {
-      setCheckInError(String(err));
+      setCheckInError(errorMessage(err));
     } finally {
       setIsSavingCheckIn(false);
     }

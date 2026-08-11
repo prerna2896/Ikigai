@@ -10,14 +10,20 @@ import {
   type Settings,
 } from '@ikigai/core';
 import { getLocalRepository } from '@ikigai/storage';
+import type {
+  ProfileRepository,
+  SettingsRepository,
+} from '@ikigai/storage';
 import SettingsForm from '../../components/SettingsForm';
 import { reflectionQuestions } from '../onboarding/reflection/questions';
+import { useRepository } from '../../components/RepositoryProvider';
+import { useCloudSyncVersion } from '../../components/CloudSyncProvider';
+import { createClient as createSupabaseClient } from '../../lib/supabase/client';
 
 export default function ProfilePage() {
   const router = useRouter();
-  const [repository, setRepository] = useState<ReturnType<
-    typeof getLocalRepository
-  > | null>(null);
+  const { profileRepo, settingsRepo } = useRepository();
+  const cloudVersion = useCloudSyncVersion();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [initialSettings, setInitialSettings] = useState<Settings | null>(null);
@@ -33,10 +39,13 @@ export default function ProfilePage() {
   const [status, setStatus] = useState<string | null>(null);
   const [isSettingsSaving, setIsSettingsSaving] = useState(false);
 
-  const loadData = async (repo: ReturnType<typeof getLocalRepository>) => {
+  const loadData = async (
+    pRepo: ProfileRepository,
+    sRepo: SettingsRepository,
+  ) => {
     const [profileRecord, settingsRecord] = await Promise.all([
-      repo.getProfile(),
-      repo.getSettings(),
+      pRepo.getProfile(),
+      sRepo.getSettings(),
     ]);
     if (profileRecord) {
       setProfile(profileRecord);
@@ -56,19 +65,14 @@ export default function ProfilePage() {
   };
 
   useEffect(() => {
-    try {
-      const repo = getLocalRepository();
-      setRepository(repo);
-      loadData(repo).catch((error) => setStatus(String(error)));
-    } catch (error) {
-      setStatus(String(error));
-    }
-  }, []);
+    if (!profileRepo || !settingsRepo) return;
+    loadData(profileRepo, settingsRepo).catch((error) =>
+      setStatus(String(error)),
+    );
+  }, [profileRepo, settingsRepo, cloudVersion]);
 
   const handleSaveProfile = async (nextName?: string) => {
-    if (!repository) {
-      return;
-    }
+    if (!profileRepo || !settingsRepo) return;
     const trimmed = (nextName ?? nameInput).trim();
     if (!trimmed) {
       setNameStatus('Please enter a name.');
@@ -95,8 +99,8 @@ export default function ProfilePage() {
           createdAt: nowIso,
           updatedAt: nowIso,
         };
-    await repository.saveProfile(nextProfile);
-    await loadData(repository);
+    await profileRepo.saveProfile(nextProfile);
+    await loadData(profileRepo, settingsRepo);
     setNameStatus('Saved');
     setReflectionStatus('Saved');
   };
@@ -121,9 +125,7 @@ export default function ProfilePage() {
   };
 
   const handleSaveSettings = async () => {
-    if (!settings || !repository) {
-      return;
-    }
+    if (!settings || !profileRepo || !settingsRepo) return;
     setIsSettingsSaving(true);
     const nowIso = new Date().toISOString();
     const derived = computeWeeklyCapacity({
@@ -133,13 +135,13 @@ export default function ProfilePage() {
       classHoursPerWeek: settings.classHoursPerWeek,
       bufferPercent: getBufferPercentForStrictness(settings.strictness),
     });
-    await repository.saveSettings({
+    await settingsRepo.saveSettings({
       ...settings,
       bufferPercent: getBufferPercentForStrictness(settings.strictness),
       weeklyCapacityHoursDerived: derived.estimatedPlanForHours,
       updatedAt: nowIso,
     });
-    await loadData(repository);
+    await loadData(profileRepo, settingsRepo);
     setStatus('Settings saved.');
     setIsSettingsSaving(false);
   };
@@ -152,11 +154,33 @@ export default function ProfilePage() {
   const isAnyDirty = isSettingsDirty || isReflectionDirty;
 
   const handleResetOnboarding = async () => {
-    if (!repository) {
-      return;
+    // Wipe both surfaces:
+    //   Cloud: profiles + settings + week_plans (FK-cascade removes
+    //          profile_reflections/goals, week_domains, week_tasks,
+    //          week_goals, hours_logged, week_notes).
+    //   Local: Dexie profile, settings, week plans, week logs — kept
+    //          as offline cache; nice to clear here too.
+    // Then land on / — the Home page reads cloud, sees no profile,
+    // and shows the Begin CTA.
+    const supabase = createSupabaseClient();
+    const { data } = await supabase.auth.getUser();
+    const userId = data.user?.id;
+    if (userId) {
+      await Promise.all([
+        supabase.from('profiles').delete().eq('user_id', userId),
+        supabase.from('settings').delete().eq('user_id', userId),
+        supabase.from('week_plans').delete().eq('user_id', userId),
+        // week_notes has FK to week_plans and would cascade, but the
+        // cascade only fires on parent delete not on RLS-filtered
+        // delete-by-user. Delete explicitly.
+        supabase.from('week_notes').delete().eq('user_id', userId),
+      ]);
     }
-    await repository.resetOnboarding();
-    router.replace('/onboarding');
+
+    const local = getLocalRepository();
+    await local.resetOnboarding();
+    router.replace('/');
+    router.refresh();
   };
 
   return (
@@ -216,7 +240,7 @@ export default function ProfilePage() {
             type="button"
             className="inline-flex w-full items-center justify-center rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-text"
             onClick={() => void handleResetOnboarding()}
-            disabled={!repository}
+            disabled={!profileRepo}
           >
             Reset onboarding
           </button>
@@ -278,7 +302,7 @@ export default function ProfilePage() {
               setReflectionStatus(null);
               void handleSaveProfile();
             }}
-            disabled={!repository || !isReflectionDirty}
+            disabled={!profileRepo || !isReflectionDirty}
           >
             {isReflectionDirty ? 'Save reflection answers' : 'Saved'}
           </button>
@@ -300,7 +324,7 @@ export default function ProfilePage() {
                 ? 'Save settings'
                 : 'Saved'
           }
-          disabled={!repository || !isSettingsDirty || isSettingsSaving}
+          disabled={!profileRepo || !isSettingsDirty || isSettingsSaving}
         />
       ) : (
         <section className="rounded-2xl border border-slate-200 bg-surface p-6 shadow-sm">
@@ -318,7 +342,7 @@ export default function ProfilePage() {
               await handleSaveSettings();
               setReflectionStatus('Saved');
             }}
-            disabled={!repository || !settings || !isAnyDirty}
+            disabled={!profileRepo || !settings || !isAnyDirty}
           >
             {isAnyDirty ? 'Save all changes' : 'Saved'}
           </button>

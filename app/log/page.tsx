@@ -1,12 +1,14 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { errorMessage } from '../../lib/errors';
 import Link from 'next/link';
 import type { Settings, WeekPlan } from '@ikigai/core';
-import { getLocalRepository } from '@ikigai/storage';
 import LogPanel from '../../components/LogPanel';
 import { withDerivedPlannedHours } from '../week/plan/planUtils';
 import { resolveCurrentWeek } from '../../lib/weekPosition';
+import { useRepository } from '../../components/RepositoryProvider';
+import { useCloudSyncVersion } from '../../components/CloudSyncProvider';
 
 const formatRange = (plan: WeekPlan, timeZone: string) => {
   const start = new Date(`${plan.weekStartISO}T00:00:00`);
@@ -26,50 +28,48 @@ type WeekState =
   | { kind: 'plan'; plan: WeekPlan; isCurrent: boolean };
 
 export default function LogPage() {
+  const { settingsRepo, weekPlanRepo } = useRepository();
+  const cloudVersion = useCloudSyncVersion();
   const [settings, setSettings] = useState<Settings | null>(null);
   const [state, setState] = useState<WeekState>({ kind: 'loading' });
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!settingsRepo || !weekPlanRepo) return;
     let cancelled = false;
-    try {
-      const repo = getLocalRepository();
-      Promise.all([repo.getSettings(), repo.listWeekPlans()])
-        .then(([settingsRecord, plans]) => {
-          if (cancelled) return;
-          setSettings(settingsRecord);
-          if (plans.length === 0) {
-            setState({ kind: 'no-plan-current', latest: null });
-            return;
-          }
-          const sorted = [...plans].sort((a, b) =>
-            a.weekStartISO < b.weekStartISO ? 1 : -1,
-          );
-          const status = resolveCurrentWeek(sorted, settingsRecord);
-          if (status.kind === 'planned') {
-            setState({
-              kind: 'plan',
-              plan: withDerivedPlannedHours(status.plan),
-              isCurrent: true,
-            });
-          } else {
-            setState({
-              kind: 'plan',
-              plan: withDerivedPlannedHours(sorted[0]),
-              isCurrent: false,
-            });
-          }
-        })
-        .catch((err) => {
-          if (!cancelled) setError(String(err));
-        });
-    } catch (err) {
-      setError(String(err));
-    }
+    Promise.all([settingsRepo.getSettings(), weekPlanRepo.listWeekPlans()])
+      .then(([settingsRecord, plans]) => {
+        if (cancelled) return;
+        setSettings(settingsRecord);
+        if (plans.length === 0) {
+          setState({ kind: 'no-plan-current', latest: null });
+          return;
+        }
+        const sorted = [...plans].sort((a, b) =>
+          a.weekStartISO < b.weekStartISO ? 1 : -1,
+        );
+        const status = resolveCurrentWeek(sorted, settingsRecord);
+        if (status.kind === 'planned') {
+          setState({
+            kind: 'plan',
+            plan: withDerivedPlannedHours(status.plan),
+            isCurrent: true,
+          });
+        } else {
+          setState({
+            kind: 'plan',
+            plan: withDerivedPlannedHours(sorted[0]),
+            isCurrent: false,
+          });
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) setError(errorMessage(err));
+      });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [settingsRepo, weekPlanRepo, cloudVersion]);
 
   const timeZone =
     settings?.weekTimeZone ||

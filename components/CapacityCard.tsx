@@ -6,7 +6,7 @@ import {
   getBufferPercentForStrictness,
   type Settings,
 } from '@ikigai/core';
-import { getLocalRepository } from '@ikigai/storage';
+import { useRepository } from './RepositoryProvider';
 
 const STRICTNESS_OPTIONS: Array<{
   value: Settings['strictness'];
@@ -32,6 +32,7 @@ export default function CapacityCard({
 }: CapacityCardProps) {
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const { settingsRepo } = useRepository();
 
   const derived = useMemo(
     () =>
@@ -58,9 +59,9 @@ export default function CapacityCard({
     newStrictness: Settings['strictness'],
   ) => {
     if (newStrictness === settings.strictness) return;
+    if (!settingsRepo) return;
     try {
       setStatus(null);
-      const repo = getLocalRepository();
       const newDerived = computeWeeklyCapacity({
         sleepHoursPerDay: settings.sleepHoursPerDay,
         maintenanceHoursPerDay: settings.maintenanceHoursPerDay,
@@ -76,7 +77,7 @@ export default function CapacityCard({
         weeklyCapacityHoursDerived: newDerived.estimatedPlanForHours,
         updatedAt: new Date().toISOString(),
       };
-      await repo.saveSettings(next);
+      await settingsRepo.saveSettings(next);
       onSettingsChange(next);
       setStatus('Saved.');
       window.setTimeout(() => setStatus(null), 1500);

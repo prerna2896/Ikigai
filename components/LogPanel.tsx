@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { errorMessage } from '../lib/errors';
 import {
   IKIGAI_PRINCIPLE_LABEL,
   IKIGAI_PRINCIPLE_IDS,
@@ -9,13 +10,13 @@ import {
   type WeekLogEntry,
   type WeekPlan,
 } from '@ikigai/core';
-import { getLocalRepository } from '@ikigai/storage';
 import { addDomainToPlan, withDerivedPlannedHours } from '../app/week/plan/planUtils';
 import { CrystalIkigai } from './CrystalIkigai';
 import IkigaiPrinciplesPlot from './IkigaiPrinciplesPlot';
 import { useTheme } from './ThemeProvider';
 import WeekGoals from './WeekGoals';
 import { getDomainIcon } from '../lib/domainIcons';
+import { useRepository } from './RepositoryProvider';
 
 type LogFormState = Record<string, string>;
 
@@ -44,6 +45,7 @@ export default function LogPanel({
   variant = 'standalone',
 }: LogPanelProps) {
   const { theme } = useTheme();
+  const { weekPlanRepo, weekLogRepo } = useRepository();
   const [plan, setPlan] = useState<WeekPlan>(weekPlan);
   const [weekLogs, setWeekLogs] = useState<WeekLogEntry[]>([]);
   const [logForm, setLogForm] = useState<LogFormState>({});
@@ -73,28 +75,24 @@ export default function LogPanel({
   }, [weekPlan]);
 
   useEffect(() => {
+    if (!weekLogRepo) return;
     let cancelled = false;
-    try {
-      const repo = getLocalRepository();
-      repo
-        .getWeekLogs(plan.id)
-        .then((logs) => {
-          if (cancelled) return;
-          const ordered = [...logs].sort((a, b) =>
-            a.dateISO < b.dateISO ? 1 : -1,
-          );
-          setWeekLogs(ordered);
-        })
-        .catch((err) => {
-          if (!cancelled) setError(String(err));
-        });
-    } catch (err) {
-      setError(String(err));
-    }
+    weekLogRepo
+      .getWeekLogs(plan.id)
+      .then((logs) => {
+        if (cancelled) return;
+        const ordered = [...logs].sort((a, b) =>
+          a.dateISO < b.dateISO ? 1 : -1,
+        );
+        setWeekLogs(ordered);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(errorMessage(err));
+      });
     return () => {
       cancelled = true;
     };
-  }, [plan.id]);
+  }, [plan.id, weekLogRepo]);
 
   const tasksForLog = useMemo(
     () =>
@@ -181,8 +179,8 @@ export default function LogPanel({
   const handleAddUnplannedDomain = async () => {
     const trimmed = newDomainName.trim();
     if (!trimmed || plan.domains.length >= 12) return;
+    if (!weekPlanRepo) return;
     try {
-      const repo = getLocalRepository();
       const principle =
         newDomainPrincipleId ?? suggestPrincipleForName(trimmed);
       const { plan: nextPlan, domain } = addDomainToPlan(
@@ -191,20 +189,20 @@ export default function LogPanel({
         principle,
       );
       const normalized = withDerivedPlannedHours(nextPlan);
-      await repo.saveWeekPlan(normalized);
+      await weekPlanRepo.saveWeekPlan(normalized);
       setPlan(normalized);
       onPlanChange?.(normalized);
       setUnplannedDomainId(domain.id);
       setNewDomainName('');
       setNewDomainPrincipleId(null);
     } catch (err) {
-      setError(String(err));
+      setError(errorMessage(err));
     }
   };
 
   const handleSaveLog = async () => {
+    if (!weekPlanRepo || !weekLogRepo) return;
     try {
-      const repo = getLocalRepository();
       setIsSaving(true);
       setError(null);
       const nowIso = new Date().toISOString();
@@ -251,7 +249,7 @@ export default function LogPanel({
           taskHours[task.id] = task.hours;
         });
         workingPlan = withDerivedPlannedHours(mergedPlan);
-        await repo.saveWeekPlan(workingPlan);
+        await weekPlanRepo.saveWeekPlan(workingPlan);
         planChanged = true;
       }
       if (Object.keys(taskHours).length === 0) {
@@ -266,8 +264,8 @@ export default function LogPanel({
         createdAt: nowIso,
         updatedAt: nowIso,
       };
-      await repo.saveWeekLog(entry);
-      const refreshed = await repo.getWeekLogs(workingPlan.id);
+      await weekLogRepo.saveWeekLog(entry);
+      const refreshed = await weekLogRepo.getWeekLogs(workingPlan.id);
       const ordered = [...refreshed].sort((a, b) =>
         a.dateISO < b.dateISO ? 1 : -1,
       );
@@ -288,7 +286,7 @@ export default function LogPanel({
       onLogSaved?.();
       window.setTimeout(() => setStatus(null), 1500);
     } catch (err) {
-      setError(String(err));
+      setError(errorMessage(err));
     } finally {
       setIsSaving(false);
     }

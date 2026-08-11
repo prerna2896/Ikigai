@@ -3,9 +3,9 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { type Profile } from '@ikigai/core';
-import { getLocalRepository } from '@ikigai/storage';
 import { OnboardingProgress } from '../../../components/OnboardingProgress';
 import OnboardingMonk from '../../../components/OnboardingMonk';
+import { useRepository } from '../../../components/RepositoryProvider';
 
 type GoalEntry = {
   text: string;
@@ -43,9 +43,7 @@ const TIMELINE_OPTIONS = [
 
 export default function OnboardingGoalsPage() {
   const router = useRouter();
-  const [repository, setRepository] = useState<ReturnType<
-    typeof getLocalRepository
-  > | null>(null);
+  const { profileRepo } = useRepository();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [selectedAreas, setSelectedAreas] = useState<string[]>([]);
   const [goals, setGoals] = useState<GoalEntry[]>([]);
@@ -54,29 +52,31 @@ export default function OnboardingGoalsPage() {
   const [status, setStatus] = useState<string | null>(null);
 
   useEffect(() => {
-    try {
-      const repo = getLocalRepository();
-      setRepository(repo);
-      repo
-        .getProfile()
-        .then((profileRecord) => {
-          if (!profileRecord) {
-            router.replace('/onboarding/context');
-            return;
-          }
-          setProfile(profileRecord);
-          if (profileRecord.lifeAreas) {
-            setSelectedAreas(profileRecord.lifeAreas);
-          }
-          if (profileRecord.goals) {
-            setGoals(profileRecord.goals);
-          }
-        })
-        .catch((error) => setStatus(String(error)));
-    } catch (error) {
-      setStatus(String(error));
-    }
-  }, [router]);
+    if (!profileRepo) return;
+    let cancelled = false;
+    profileRepo
+      .getProfile()
+      .then((profileRecord) => {
+        if (cancelled) return;
+        if (!profileRecord) {
+          router.replace('/onboarding/context');
+          return;
+        }
+        setProfile(profileRecord);
+        if (profileRecord.lifeAreas) {
+          setSelectedAreas(profileRecord.lifeAreas);
+        }
+        if (profileRecord.goals) {
+          setGoals(profileRecord.goals);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) setStatus(String(error));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [router, profileRepo]);
 
   const toggleArea = (name: string) => {
     setSelectedAreas((prev) =>
@@ -106,7 +106,7 @@ export default function OnboardingGoalsPage() {
   };
 
   const handleContinue = async () => {
-    if (!repository || !profile) return;
+    if (!profileRepo || !profile) return;
     const nowIso = new Date().toISOString();
     const updatedProfile: Profile = {
       ...profile,
@@ -114,7 +114,7 @@ export default function OnboardingGoalsPage() {
       goals,
       updatedAt: nowIso,
     };
-    await repository.saveProfile(updatedProfile);
+    await profileRepo.saveProfile(updatedProfile);
     router.replace('/onboarding/settings');
   };
 
@@ -290,7 +290,7 @@ export default function OnboardingGoalsPage() {
           type="button"
           className="rounded-full bg-accent px-5 py-2 font-medium text-white"
           onClick={() => void handleContinue()}
-          disabled={!repository || !profile}
+          disabled={!profileRepo || !profile}
           data-testid="onboarding-next"
         >
           Continue
