@@ -655,46 +655,70 @@ export default function HistoryPage() {
                 Weekly time series
               </h2>
               <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-text">
-                <input
-                  type="date"
+                {/* Two week-selectors instead of raw date inputs.
+                    Rationale: the underlying range comparison operates
+                    on weekId strings (Sunday/Monday dates), so any
+                    date input would have to snap to those anyway,
+                    which felt like a bug when users saw "Jul 23" tapped
+                    → header displayed "Jul 19". Options are drawn
+                    directly from historySummaries (weeks the user
+                    actually has plans for) so there's no ambiguity. */}
+                <label className="sr-only" htmlFor="range-start-week">
+                  Start week
+                </label>
+                <select
+                  id="range-start-week"
                   className="bg-transparent outline-none"
                   value={rangeStartISO ?? ''}
                   onChange={(event) => {
                     const value = event.target.value;
                     if (!value) return;
-                    const weekStart = getWeekStartISOForDate(
-                      new Date(`${value}T00:00:00`),
-                      settings?.weekStartDay || 'sunday',
-                    );
-                    setRangeStartISO(weekStart);
-                    if (rangeEndISO && weekStart > rangeEndISO) {
-                      setRangeEndISO(addDaysISO(weekStart, 21));
+                    setRangeStartISO(value);
+                    // Auto-adjust end if the new start is later than
+                    // the current end — pick the newest week we know
+                    // about (options are ordered newest-first).
+                    if (rangeEndISO && value > rangeEndISO) {
+                      setRangeEndISO(historySummaries[0]?.weekId ?? value);
                     }
                   }}
-                />
+                >
+                  {historySummaries.map((summary) => (
+                    <option key={summary.weekId} value={summary.weekId}>
+                      {summary.rangeLabel}
+                    </option>
+                  ))}
+                </select>
                 <span className="text-slate-400 select-none">–</span>
-                <input
-                  type="date"
+                <label className="sr-only" htmlFor="range-end-week">
+                  End week
+                </label>
+                <select
+                  id="range-end-week"
                   className="bg-transparent outline-none"
                   value={rangeEndISO ?? ''}
                   onChange={(event) => {
                     const value = event.target.value;
                     if (!value) return;
-                    const weekStart = getWeekStartISOForDate(
-                      new Date(`${value}T00:00:00`),
-                      settings?.weekStartDay || 'sunday',
-                    );
-                    setRangeEndISO(weekStart);
-                    if (rangeStartISO && weekStart < rangeStartISO) {
-                      setRangeStartISO(addDaysISO(weekStart, -21));
+                    setRangeEndISO(value);
+                    if (rangeStartISO && value < rangeStartISO) {
+                      setRangeStartISO(
+                        historySummaries[historySummaries.length - 1]?.weekId ??
+                          value,
+                      );
                     }
                   }}
-                />
+                >
+                  {historySummaries.map((summary) => (
+                    <option key={summary.weekId} value={summary.weekId}>
+                      {summary.rangeLabel}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
             <p className="mt-1 text-xs text-mutedText">
-              Range boundaries snap to your week start day. Column height =
-              168h week. Points show planned and completed. Hover for hours.
+              Column height = 168h week. Points show planned and completed.
+              Hover for hours.
             </p>
             {weeklySeries.points.length ? (
               <>
