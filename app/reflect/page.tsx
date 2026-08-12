@@ -16,6 +16,16 @@ import {
 import { useRepository } from '../../components/RepositoryProvider';
 import { useCloudSyncVersion } from '../../components/CloudSyncProvider';
 import type { WeekNoteRepository } from '@ikigai/storage';
+import { clearForm, retrieveForm, stashForm } from '../../lib/formStash';
+
+// Session-storage keys for the two long-form text inputs on this
+// page. Draft is scoped per reflection-category so switching between
+// categories doesn't cross-pollinate drafts; check-in is a single
+// singleton key. See lib/formStash.ts for the namespace + envelope.
+const stashKey = {
+  draft: (categoryId: CategoryId) => `reflect.draft:${categoryId}`,
+  checkIn: () => 'reflect.checkIn',
+} as const;
 
 type CategoryId = ReflectionCategoryId;
 type ParsedNote = ParsedReflectionNote;
@@ -90,7 +100,22 @@ function ReflectPageContent() {
   const [error, setError] = useState<string | null>(null);
   const [justSavedId, setJustSavedId] = useState<string | null>(null);
   const [checkInEmoji, setCheckInEmoji] = useState<string | null>(null);
-  const [checkInText, setCheckInText] = useState('');
+  const [checkInText, setCheckInText] = useState<string>(
+    () => retrieveForm<string>(stashKey.checkIn()) ?? '',
+  );
+
+  // Persist the two long-form drafts across reloads / re-auth cycles.
+  // Category-scoped draft: only stash while a category is open — the
+  // key lookup depends on activeCategoryId. Check-in text is a
+  // singleton, always stashed.
+  useEffect(() => {
+    if (!activeCategoryId) return;
+    stashForm(stashKey.draft(activeCategoryId), draft);
+  }, [activeCategoryId, draft]);
+
+  useEffect(() => {
+    stashForm(stashKey.checkIn(), checkInText);
+  }, [checkInText]);
   const [isSavingCheckIn, setIsSavingCheckIn] = useState(false);
   const [checkInStatus, setCheckInStatus] = useState<string | null>(null);
   const [checkInError, setCheckInError] = useState<string | null>(null);
@@ -164,12 +189,17 @@ function ReflectPageContent() {
 
   const openCategory = (id: CategoryId) => {
     setActiveCategoryId(id);
-    setDraft('');
+    // Restore any stashed draft for this specific category. If there
+    // isn't one, this falls back to the empty state we want anyway.
+    setDraft(retrieveForm<string>(stashKey.draft(id)) ?? '');
     setJustSavedId(null);
     setError(null);
   };
 
   const closeModal = () => {
+    // Leave the stash in place — user closed the modal but didn't
+    // save; if they reopen the same category their draft should still
+    // be there. Only saves + explicit resets clear the stash.
     setActiveCategoryId(null);
     setDraft('');
     setJustSavedId(null);
@@ -202,6 +232,9 @@ function ReflectPageContent() {
       await refreshLatestNotes(weekNoteRepo, latestWeek);
       setJustSavedId(newNote.id);
       setDraft('');
+      // Successful save = draft is now persisted in cloud, no longer
+      // an in-progress local artifact.
+      clearForm(stashKey.draft(activeCategory.id));
       closeModal();
     } catch (err) {
       setError(errorMessage(err));
@@ -239,6 +272,7 @@ function ReflectPageContent() {
       await refreshLatestNotes(weekNoteRepo, latestWeek);
       setCheckInEmoji(null);
       setCheckInText('');
+      clearForm(stashKey.checkIn());
       setCheckInStatus('Logged.');
       window.setTimeout(() => setCheckInStatus(null), 1500);
     } catch (err) {
