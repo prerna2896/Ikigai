@@ -44,6 +44,40 @@ import type { CloudRepository } from './cloudRepository';
 // CloudRepository does, so RepositoryProvider consumers don't need
 // to know which one they got.
 
+// Optional auth-expired hook. Injected by the app so this package
+// stays UI-framework-agnostic. If unset (unit tests, non-app callers)
+// auth-expired errors just throw as usual with no extra side effect.
+let notifyAuthExpired: (() => void) | null = null;
+export function setAuthExpiredHook(fn: (() => void) | null): void {
+  notifyAuthExpired = fn;
+}
+
+// Duplicated locally rather than importing lib/errors so the
+// cloud-storage package stays free of app-directory dependencies.
+// Kept identical in shape to lib/errors#isAuthExpiredError — any
+// change to one MUST be mirrored to the other.
+function isAuthExpiredErr(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const anyErr = err as {
+    status?: unknown;
+    code?: unknown;
+    message?: unknown;
+    __isAuthError?: unknown;
+  };
+  if (anyErr.__isAuthError === true) return true;
+  if (anyErr.status === 401) return true;
+  if (typeof anyErr.code === 'string' && /^PGRST30[12]$/.test(anyErr.code)) {
+    return true;
+  }
+  if (typeof anyErr.message === 'string') {
+    const m = anyErr.message.toLowerCase();
+    if (m.includes('jwt expired')) return true;
+    if (m.includes('invalid jwt')) return true;
+    if (m.includes('not authenticated')) return true;
+  }
+  return false;
+}
+
 function isNetworkError(err: unknown): boolean {
   // Two clues, either sufficient:
   //   1. The browser has flipped offline. Trust it — cheap and definitive.
@@ -98,6 +132,13 @@ export class OfflineAwareCloudRepository
       mirrorWrite(value).catch(() => {});
       return value;
     } catch (err) {
+      // Auth expired trumps network detection — a 401 with a fetch
+      // error attached should still open the re-auth modal, not
+      // silently fall back to stale Dexie data.
+      if (isAuthExpiredErr(err)) {
+        notifyAuthExpired?.();
+        throw err;
+      }
       if (!isNetworkError(err)) throw err;
       return mirrorRead();
     }
@@ -197,10 +238,19 @@ export class OfflineAwareCloudRepository
     try {
       const result = await cloudCall();
       // Even on success we mirror to Dexie so a later offline read
-      // fallback (stretch) has fresh data. Non-blocking — best-effort.
+      // fallback has fresh data. Non-blocking — best-effort.
       localMirror().catch(() => {});
       return result;
     } catch (err) {
+      // Auth expired: surface the modal AND throw so the caller's
+      // catch block can preserve form state. Do NOT enqueue — the
+      // queue is for network failures, not permission failures, and
+      // silently queueing a write that will fail with the same
+      // credentials post-refresh would create a poisoned entry.
+      if (isAuthExpiredErr(err)) {
+        notifyAuthExpired?.();
+        throw err;
+      }
       if (!isNetworkError(err)) throw err;
       // Mirror BEFORE enqueue so a UI refetch right after this call
       // sees the write. If the mirror itself fails we still enqueue —
