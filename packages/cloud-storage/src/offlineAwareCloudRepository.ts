@@ -19,13 +19,16 @@ import type { CloudRepository } from './cloudRepository';
 //
 // RepositoryProvider today swaps LocalRepository (signed-out) for
 // CloudRepository (signed-in). That leaves a gap: a signed-in user
-// with no network hits a raw fetch error and loses the write.
+// with no network hits a raw fetch error and loses the write, or
+// sees a broken screen because a read failed.
 //
 // This wrapper closes that gap without introducing a full sync engine:
-//   - Reads pass through to cloud unchanged. (If cloud is unreachable
-//     the caller sees the error today — same behavior as before.
-//     Read-through fallback to Dexie is a natural stretch but is
-//     out of scope for this milestone.)
+//   - Reads try cloud first. On success we mirror the response into
+//     Dexie fire-and-forget so a later offline read has something
+//     fresh to serve. On a *network-shaped* failure we return the
+//     Dexie mirror instead of throwing. On any OTHER error (RLS,
+//     validation, 5xx) we re-throw — those are real bugs and hiding
+//     them behind stale cached data would mask them from users.
 //   - Writes attempt the cloud call first. On a *network-shaped*
 //     failure (Failed to fetch / NetworkError / navigator.onLine
 //     false) we:
@@ -35,8 +38,7 @@ import type { CloudRepository } from './cloudRepository';
 //       2. Enqueue a pending_mutations row so queueDrain.ts can
 //          replay it when we come back online.
 //     On any OTHER error (RLS, validation, 5xx from Supabase) we
-//     re-throw — those are real bugs and silently queueing them would
-//     hide them from users and from Sentry.
+//     re-throw for the same reason as reads.
 //
 // The wrapper implements the same 5 repository interfaces the raw
 // CloudRepository does, so RepositoryProvider consumers don't need
@@ -78,34 +80,107 @@ export class OfflineAwareCloudRepository
     private readonly userId: string,
   ) {}
 
-  // ─── Reads (pass-through) ──────────────────────────────────────────────
+  // ─── Reads (with Dexie fallback on network failure) ────────────────────
+
+  // Try cloud; on network failure serve from the Dexie mirror; on any
+  // other failure re-throw. On cloud success we also opportunistically
+  // update the mirror so a later offline read has current data.
+  private async readOrMirror<T>(
+    cloudCall: () => Promise<T>,
+    mirrorRead: () => Promise<T>,
+    mirrorWrite: (value: T) => Promise<void>,
+  ): Promise<T> {
+    try {
+      const value = await cloudCall();
+      // Fire-and-forget mirror update. If the mirror write fails
+      // (validation, quota) it just means the next offline read has
+      // stale-or-empty data; the current call still returns cloud-fresh.
+      mirrorWrite(value).catch(() => {});
+      return value;
+    } catch (err) {
+      if (!isNetworkError(err)) throw err;
+      return mirrorRead();
+    }
+  }
 
   getProfile(): Promise<Profile | null> {
-    return this.cloud.getProfile();
+    return this.readOrMirror(
+      () => this.cloud.getProfile(),
+      () => this.local.getProfile(),
+      // Skip mirror write if cloud has nothing to store — otherwise
+      // we'd overwrite the Dexie profile with null and blank the
+      // user's local state after every sign-in read.
+      async (value) => {
+        if (value) await this.local.saveProfile(value);
+      },
+    );
   }
 
   getSettings(): Promise<Settings> {
-    return this.cloud.getSettings();
+    return this.readOrMirror(
+      () => this.cloud.getSettings(),
+      () => this.local.getSettings(),
+      (value) => this.local.saveSettings(value),
+    );
   }
 
   getWeekPlan(weekStartISO: string): Promise<WeekPlan | null> {
-    return this.cloud.getWeekPlan(weekStartISO);
+    return this.readOrMirror(
+      () => this.cloud.getWeekPlan(weekStartISO),
+      () => this.local.getWeekPlan(weekStartISO),
+      async (value) => {
+        if (value) await this.local.saveWeekPlan(value);
+      },
+    );
   }
 
   listWeekPlans(): Promise<WeekPlan[]> {
-    return this.cloud.listWeekPlans();
+    return this.readOrMirror(
+      () => this.cloud.listWeekPlans(),
+      () => this.local.listWeekPlans(),
+      // Mirror each plan individually; saveWeekPlan is an upsert so
+      // this converges the local set to the cloud snapshot without
+      // needing a bulk-replace primitive.
+      async (plans) => {
+        for (const plan of plans) {
+          await this.local.saveWeekPlan(plan);
+        }
+      },
+    );
   }
 
   getWeekLogs(weekId: string): Promise<WeekLogEntry[]> {
-    return this.cloud.getWeekLogs(weekId);
+    return this.readOrMirror(
+      () => this.cloud.getWeekLogs(weekId),
+      () => this.local.getWeekLogs(weekId),
+      async (entries) => {
+        for (const entry of entries) {
+          await this.local.saveWeekLog(entry);
+        }
+      },
+    );
   }
 
   getWeekNote(weekId: string): Promise<WeekNote | null> {
-    return this.cloud.getWeekNote(weekId);
+    return this.readOrMirror(
+      () => this.cloud.getWeekNote(weekId),
+      () => this.local.getWeekNote(weekId),
+      async (value) => {
+        if (value) await this.local.saveWeekNote(value);
+      },
+    );
   }
 
   listWeekNotes(weekId: string): Promise<WeekNote[]> {
-    return this.cloud.listWeekNotes(weekId);
+    return this.readOrMirror(
+      () => this.cloud.listWeekNotes(weekId),
+      () => this.local.listWeekNotes(weekId),
+      async (notes) => {
+        for (const note of notes) {
+          await this.local.saveWeekNote(note);
+        }
+      },
+    );
   }
 
   // ─── Writes (offline-aware) ────────────────────────────────────────────
