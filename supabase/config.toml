@@ -450,6 +450,19 @@ project_id = "myojrmaenvaexpiiflak"
 
 [remotes.myojrmaenvaexpiiflak.auth]
 site_url = "https://ikigai-delta.vercel.app"
+# additional_redirect_urls belongs under [auth], NOT inside the
+# [auth.email.smtp] block — the Supabase CLI's config parser rejects
+# any unknown key under [auth.email.smtp] and fails `supabase db reset`
+# / `supabase config push` with a decode error. Keep the two blocks
+# clearly separated.
+additional_redirect_urls = [
+  "https://ikigai-delta.vercel.app",
+  "https://ikigai-delta.vercel.app/auth/confirm",
+  "https://ikigai-delta.vercel.app/**",
+  "http://localhost:3000",
+  "http://localhost:3000/auth/confirm",
+  "http://localhost:3000/**",
+]
 
 # Custom SMTP via Resend. Password read from RESEND_API_KEY env var at
 # push time — the config file itself carries no secret. This unlocks
@@ -466,14 +479,6 @@ user = "resend"
 pass = "env(RESEND_API_KEY)"
 admin_email = "onboarding@resend.dev"
 sender_name = "Ikigai"
-additional_redirect_urls = [
-  "https://ikigai-delta.vercel.app",
-  "https://ikigai-delta.vercel.app/auth/confirm",
-  "https://ikigai-delta.vercel.app/**",
-  "http://localhost:3000",
-  "http://localhost:3000/auth/confirm",
-  "http://localhost:3000/**",
-]
 
 # Custom email templates. Both include {{ .Token }} so users on iOS
 # PWAs (where magic-link taps open in Safari, not the PWA) can read
