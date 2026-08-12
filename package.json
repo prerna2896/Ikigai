@@ -14,6 +14,7 @@
     "test:e2e:headed": "playwright test --headed",
     "test:rls": "playwright test --config playwright.rls.config.ts",
     "test:cloud": "playwright test --config playwright.cloud.config.ts",
+    "test:perf": "playwright test --config playwright.perf.config.ts",
     "db:generate": "drizzle-kit generate",
     "db:audit-rls": "bash supabase/scripts/audit-rls.sh",
     "db:pgtap": "bash supabase/scripts/run-pgtap.sh"
