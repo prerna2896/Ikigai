@@ -89,14 +89,29 @@ function isNetworkError(err: unknown): boolean {
     return true;
   }
   if (!err) return false;
-  const message = err instanceof Error ? err.message : String(err);
+  // Supabase throws PostgrestError-shaped plain objects that AREN'T
+  // `instanceof Error`, so the old `err instanceof Error ? err.message
+  // : String(err)` produced "[object Object]" for them and never
+  // matched. Read `message`/`details` off any object; fall back to
+  // String() only for primitives. Same fix landed for
+  // CloudMigrationRunner's copy in PR #19 — see that commit's message
+  // for the failure mode that surfaced it (red banner instead of the
+  // reconnecting pill).
+  let message = '';
+  if (err instanceof Error) {
+    message = err.message;
+  } else if (typeof err === 'object') {
+    const anyErr = err as { message?: unknown; details?: unknown };
+    if (typeof anyErr.message === 'string') message = anyErr.message;
+    else if (typeof anyErr.details === 'string') message = anyErr.details;
+  } else {
+    message = String(err);
+  }
   if (/Failed to fetch/i.test(message)) return true;
   if (/NetworkError/i.test(message)) return true;
   if (/network request failed/i.test(message)) return true;
-  // Supabase's PostgrestError wraps status codes; if there is NO
-  // status/code and only a message that reads like a fetch failure,
-  // fall through above. Otherwise this is a real API-level failure and
-  // must not be queued.
+  // Anything else — real API-level failure that must not be queued
+  // (RLS violation, validation, 5xx). Let the caller see it.
   return false;
 }
 
