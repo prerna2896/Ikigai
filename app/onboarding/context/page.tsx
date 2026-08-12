@@ -7,13 +7,21 @@ import { OnboardingProgress } from '../../../components/OnboardingProgress';
 import OnboardingMonk from '../../../components/OnboardingMonk';
 import { OnboardingH1, OnboardingBody, OnboardingLabel } from '../../../components/OnboardingTypography';
 import { useRepository } from '../../../components/RepositoryProvider';
+import { clearForm, retrieveForm, stashForm } from '../../../lib/formStash';
+
+const STASH_KEY = 'onboarding.nameInput';
 
 export default function OnboardingContextPage() {
   const router = useRouter();
   const { profileRepo, settingsRepo } = useRepository();
   const [status, setStatus] = useState<string | null>(null);
   const [profileName, setProfileName] = useState<string | null>(null);
-  const [nameInput, setNameInput] = useState('');
+  const [nameInput, setNameInput] = useState<string>(
+    () => retrieveForm<string>(STASH_KEY) ?? '',
+  );
+  useEffect(() => {
+    stashForm(STASH_KEY, nameInput);
+  }, [nameInput]);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isTyping, setIsTyping] = useState(false);
 
@@ -140,6 +148,8 @@ export default function OnboardingContextPage() {
                     createdAt: nowIso,
                     updatedAt: nowIso,
                   });
+                  // Name is now persisted; the stash is no longer useful.
+                  clearForm(STASH_KEY);
                 }
                 router.replace('/onboarding/tone');
               }}

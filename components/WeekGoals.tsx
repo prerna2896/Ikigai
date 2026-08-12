@@ -4,6 +4,12 @@ import { useEffect, useMemo, useState } from 'react';
 import type { WeekGoal, WeekPlan } from '@ikigai/core';
 import type { WeekPlanRepository } from '@ikigai/storage';
 import { useRepository } from './RepositoryProvider';
+import { clearForm, retrieveForm, stashForm } from '../lib/formStash';
+
+// The in-progress "new goal" input, keyed per week plan so users
+// working on multiple weeks (rare but possible) don't cross-
+// pollinate drafts. Cleared on successful Add.
+const stashKey = (planId: string) => `weekGoals.draft:${planId}`;
 
 const MAX_GOALS = 3;
 
@@ -32,12 +38,22 @@ export default function WeekGoals({
 }: WeekGoalsProps) {
   const { weekPlanRepo } = useRepository();
   const [goals, setGoals] = useState<WeekGoal[]>(() => ensureGoals(plan));
-  const [draft, setDraft] = useState('');
+  const [draft, setDraft] = useState<string>(
+    () => retrieveForm<string>(stashKey(plan.id)) ?? '',
+  );
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setGoals(ensureGoals(plan));
+    // If the mounted plan changed (rare — user navigated to a
+    // different week), pick up that week's stash instead of the
+    // previous week's.
+    setDraft(retrieveForm<string>(stashKey(plan.id)) ?? '');
   }, [plan]);
+
+  useEffect(() => {
+    stashForm(stashKey(plan.id), draft);
+  }, [plan.id, draft]);
 
   const completedCount = useMemo(
     () => goals.filter((g) => g.completedAt).length,
@@ -65,6 +81,7 @@ export default function WeekGoals({
       completedAt: null,
     };
     setDraft('');
+    clearForm(stashKey(plan.id));
     void commit([...goals, newGoal]);
   };
 

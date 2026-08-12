@@ -6,6 +6,9 @@ import { type Profile } from '@ikigai/core';
 import { OnboardingProgress } from '../../../components/OnboardingProgress';
 import OnboardingMonk from '../../../components/OnboardingMonk';
 import { useRepository } from '../../../components/RepositoryProvider';
+import { clearForm, retrieveForm, stashForm } from '../../../lib/formStash';
+
+const STASH_KEY = 'onboarding.goalText';
 
 type GoalEntry = {
   text: string;
@@ -47,7 +50,12 @@ export default function OnboardingGoalsPage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [selectedAreas, setSelectedAreas] = useState<string[]>([]);
   const [goals, setGoals] = useState<GoalEntry[]>([]);
-  const [goalText, setGoalText] = useState('');
+  const [goalText, setGoalText] = useState<string>(
+    () => retrieveForm<string>(STASH_KEY) ?? '',
+  );
+  useEffect(() => {
+    stashForm(STASH_KEY, goalText);
+  }, [goalText]);
   const [goalTimeline, setGoalTimeline] = useState('1_month');
   const [status, setStatus] = useState<string | null>(null);
 
@@ -98,6 +106,7 @@ export default function OnboardingGoalsPage() {
     };
     setGoals((prev) => [...prev, newGoal]);
     setGoalText('');
+    clearForm(STASH_KEY);
     setGoalTimeline('1_month');
   };
 
