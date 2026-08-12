@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { errorMessage } from '../lib/errors';
+import { retrieveForm, stashForm } from '../lib/formStash';
 import {
   IKIGAI_PRINCIPLE_LABEL,
   IKIGAI_PRINCIPLE_IDS,
@@ -56,7 +57,18 @@ export default function LogPanel({
   const [isSaving, setIsSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [unplannedTitle, setUnplannedTitle] = useState('');
+  // Stash the in-progress unplanned-task title across reloads/re-auth.
+  // Proof-of-concept for the form-stash pattern: if a session expires
+  // while a user is typing here, they can sign back in and their draft
+  // is still there. Namespace the key with the plan id so switching
+  // between weeks doesn't cross-pollinate drafts.
+  const stashKey = `logPanel.unplannedTitle:${weekPlan.id}`;
+  const [unplannedTitle, setUnplannedTitle] = useState<string>(
+    () => retrieveForm<string>(stashKey) ?? '',
+  );
+  useEffect(() => {
+    stashForm(stashKey, unplannedTitle);
+  }, [stashKey, unplannedTitle]);
   const [unplannedHours, setUnplannedHours] = useState('1');
   const [unplannedDomainId, setUnplannedDomainId] = useState<string | null>(
     weekPlan.domains[0]?.id ?? null,

@@ -4,7 +4,8 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { getLocalRepository } from '@ikigai/storage';
 import { LocalToCloudMigrator, type MigrationResult } from '@ikigai/cloud-storage';
 import { createClient as createSupabaseClient } from '../lib/supabase/client';
-import { errorMessage } from '../lib/errors';
+import { errorMessage, isAuthExpiredError } from '../lib/errors';
+import { emitSessionExpired } from '../lib/authEvents';
 
 // M4 — runs LocalToCloudMigrator once per user, per browser.
 //
@@ -97,6 +98,12 @@ export function CloudMigrationRunner(): ReactNode {
         if (!cancelled) setState({ kind: 'done', result });
       } catch (err) {
         console.error('[m4] migration failed', err);
+        if (isAuthExpiredError(err)) {
+          // Route through the global session-expired handler instead
+          // of showing the migration's own error banner — one
+          // consistent re-auth surface across the app.
+          emitSessionExpired();
+        }
         if (!cancelled) {
           const raw = errorMessage(err);
           // FK violation on auth.users usually means the JWT is

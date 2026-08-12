@@ -19,9 +19,18 @@ import type {
 import {
   CloudRepository,
   OfflineAwareCloudRepository,
+  setAuthExpiredHook,
   startQueueDrainer,
 } from '@ikigai/cloud-storage';
 import { createClient as createSupabaseClient } from '../lib/supabase/client';
+import { emitSessionExpired } from '../lib/authEvents';
+
+// Wire the cloud-storage package's auth-expired hook into the app's
+// event bus. Idempotent — the package holds a single module-scoped
+// callback, so re-registering just replaces it. Runs at module load
+// time (not inside a component) because it's a global concern and
+// doesn't need to react to any state.
+setAuthExpiredHook(emitSessionExpired);
 
 // M2.3 scope: Profile + Settings + WeekPlan + WeekLog + WeekNote go to
 // Cloud when signed in, Local when not. (Domain catalog remains
