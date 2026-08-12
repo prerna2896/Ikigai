@@ -14,16 +14,21 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 import { createClient } from '../../lib/supabase/client';
 
-// A single unified form. One email input, one optional 6-digit code
-// input, two clearly-labelled buttons:
-//   Send magic link  — triggers signInWithOtp; user gets an email
-//                       containing both a click-through link and the
-//                       6-digit code.
+// A single unified form. One email input, one 6-digit code input, two
+// clearly-labelled buttons:
+//   Email me a code  — triggers signInWithOtp; user gets an email
+//                       containing the 6-digit code (and a link as a
+//                       secondary option).
 //   Sign in with code — verifies the entered 6-digit code against the
 //                       entered email; enabled only when both are set.
 //
-// The unified layout avoids the earlier "I have a code" tab, which
-// was misleading — you still had to type your email.
+// Copy leads with the code path because that's the only flow that
+// works cleanly for iOS PWA users: magic-link taps open in Safari,
+// whose session cookies don't reach the PWA context, so users tap
+// the link → sign in in Safari → return to the PWA → still signed
+// out. Typing the code inside the PWA sets the session in the PWA
+// context. Cross-device (read email on phone, type on iPad) also
+// works with the code.
 
 type Status =
   | { kind: 'idle' }
@@ -142,8 +147,8 @@ function LoginForm() {
           Sign in
         </h1>
         <p className="text-sm text-mutedText">
-          We&apos;ll email you both a link and a 6-digit code. Use whichever
-          is easier.
+          We&apos;ll email you a 6-digit code. Enter it here to sign in.
+          (There&apos;s also a link in the email if you prefer.)
         </p>
       </header>
 
@@ -169,12 +174,12 @@ function LoginForm() {
           data-testid="login-send-link"
           className="inline-flex w-full items-center justify-center rounded-xl bg-accent px-4 py-3 text-base font-medium text-white shadow-sm transition-opacity hover:opacity-90 disabled:opacity-60"
         >
-          {status.kind === 'sending' ? 'Sending…' : 'Send magic link'}
+          {status.kind === 'sending' ? 'Sending…' : 'Email me a code'}
         </button>
 
         <div className="flex items-center gap-3 pt-2 text-[11px] uppercase tracking-widest text-mutedText/70">
           <span className="h-px flex-1 bg-slate-200" aria-hidden />
-          Or enter a code
+          Enter your code
           <span className="h-px flex-1 bg-slate-200" aria-hidden />
         </div>
 
@@ -218,9 +223,10 @@ function LoginForm() {
         >
           <p className="font-medium">Check your email.</p>
           <p className="mt-1 text-mutedText">
-            We sent a magic link and a 6-digit code to{' '}
-            <strong>{status.email}</strong>. Click the link on this device, or
-            type the code above to sign in from another one.
+            We sent a 6-digit code to <strong>{status.email}</strong>. Type it
+            above to sign in — this works on any device, including apps saved
+            to your home screen. The email also contains a link if you&apos;d
+            rather click.
           </p>
           {status.justResent ? (
             <p className="mt-2 text-xs text-emerald-700">
