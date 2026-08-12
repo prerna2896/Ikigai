@@ -549,32 +549,47 @@ export class CloudRepository
   async saveWeekLog(entry: WeekLogEntry): Promise<void> {
     const userId = await currentUserId(this.supabase);
 
-    // Wipe existing rows for this (user, week, date). Simpler than
-    // diffing keys and inserting/updating/deleting individually.
-    await this.supabase
+    // Only touch rows for the tasks in this entry — do NOT wipe
+    // other tasks' rows for the same day. The old implementation
+    // deleted every (user_id, week_plan_id, date_iso) row and
+    // re-inserted, which destroyed prior logs whenever the caller
+    // submitted a partial taskHours map. Real-world example: user
+    // logged 16h of sleep at 10am; opened the form at 2pm to log 2h
+    // of an unplanned task with sleep left blank; sleep dropped from
+    // 16h back to 0.
+    //
+    // We can't use PostgREST's .upsert({ onConflict: ... }) here
+    // because the unique index on (user_id, task_id, date_iso) is
+    // PARTIAL (WHERE task_id IS NOT NULL) — Postgres's ON CONFLICT
+    // needs the WHERE predicate on the constraint spec, which the
+    // Supabase JS client doesn't expose. Instead, delete-only-matching
+    // then insert: two round-trips per save, still O(1) in row count.
+    const filtered = Object.entries(entry.taskHours).filter(
+      ([, hours]) => Number(hours) > 0,
+    );
+    if (filtered.length === 0) return;
+
+    const taskIds = filtered.map(([taskId]) => taskId);
+    const { error: delErr } = await this.supabase
       .from('hours_logged')
       .delete()
       .eq('user_id', userId)
-      .eq('week_plan_id', entry.weekId)
-      .eq('date_iso', entry.dateISO);
+      .eq('date_iso', entry.dateISO)
+      .in('task_id', taskIds);
+    if (delErr) throw delErr;
 
-    const rows = Object.entries(entry.taskHours)
-      .filter(([, hours]) => Number(hours) > 0)
-      .map(([taskId, hours]) => ({
-        id: crypto.randomUUID(),
-        user_id: userId,
-        task_id: taskId,
-        week_plan_id: entry.weekId,
-        date_iso: entry.dateISO,
-        hours,
-      }));
-
-    if (rows.length > 0) {
-      const { error } = await this.supabase
-        .from('hours_logged')
-        .insert(rows);
-      if (error) throw error;
-    }
+    const rows = filtered.map(([taskId, hours]) => ({
+      id: crypto.randomUUID(),
+      user_id: userId,
+      task_id: taskId,
+      week_plan_id: entry.weekId,
+      date_iso: entry.dateISO,
+      hours,
+    }));
+    const { error: insErr } = await this.supabase
+      .from('hours_logged')
+      .insert(rows);
+    if (insErr) throw insErr;
   }
 
   // ─── WeekNote ──────────────────────────────────────────────────────────

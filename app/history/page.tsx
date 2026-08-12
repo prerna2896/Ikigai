@@ -693,7 +693,8 @@ export default function HistoryPage() {
               </div>
             </div>
             <p className="mt-1 text-xs text-mutedText">
-              Column height = 168h week. Points show planned and completed. Hover for hours.
+              Range boundaries snap to your week start day. Column height =
+              168h week. Points show planned and completed. Hover for hours.
             </p>
             {weeklySeries.points.length ? (
               <>
@@ -742,7 +743,16 @@ export default function HistoryPage() {
                           {weeklySeries.points.map((point, i) => {
                             const cx = n > 1 ? pL + i * step : pL + cW / 2;
                             const colX = Math.max(pL, cx - colW / 2 + 2);
-                            const colActualW = Math.min(colW - 4, cW);
+                            // Width must fit inside the plot area on
+                            // BOTH sides — for a 2-point series,
+                            // colW = cW, so a centered column on the
+                            // right endpoint would extend past pL+cW
+                            // without this clamp (the "green band
+                            // spills off the right edge" bug).
+                            const colActualW = Math.max(
+                              0,
+                              Math.min(colW - 4, pL + cW - colX),
+                            );
                             const shortLabel = (() => {
                               const part = point.label.split('–')[0]?.trim() ?? point.label;
                               return part.replace(/^(Sun|Mon|Tue|Wed|Thu|Fri|Sat),\s*/, '');
