@@ -437,3 +437,51 @@ enabled = true
 # declarative_schema_path = "./database"
 # JSON string passed through to pg-delta SQL formatting.
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":80,\"commaStyle\":\"trailing\"}"
+
+# ─── Per-remote overrides ────────────────────────────────────────────────
+# Values above are for LOCAL `supabase start`. Hosted projects each get
+# their own [remotes.<project_ref>...] block that shadows local defaults
+# on `supabase config push --project-ref <ref>`. This keeps local dev
+# pointing at localhost while pushing hosted-specific settings (Vercel
+# URLs, email templates that include {{ .Token }} for the 6-digit code
+# flow) to the actual project.
+[remotes.myojrmaenvaexpiiflak]
+project_id = "myojrmaenvaexpiiflak"
+
+[remotes.myojrmaenvaexpiiflak.auth]
+site_url = "https://ikigai-delta.vercel.app"
+
+# Custom SMTP via Resend. Password read from RESEND_API_KEY env var at
+# push time — the config file itself carries no secret. This unlocks
+# custom email templates (free tier without SMTP won't accept them)
+# AND, more importantly, lets us include the 6-digit code inline so
+# iOS PWA users can sign in inside the standalone app context
+# (magic-link taps otherwise open in Safari, whose session cookies
+# don't reach the PWA).
+[remotes.myojrmaenvaexpiiflak.auth.email.smtp]
+enabled = true
+host = "smtp.resend.com"
+port = 587
+user = "resend"
+pass = "env(RESEND_API_KEY)"
+admin_email = "onboarding@resend.dev"
+sender_name = "Ikigai"
+additional_redirect_urls = [
+  "https://ikigai-delta.vercel.app",
+  "https://ikigai-delta.vercel.app/auth/confirm",
+  "https://ikigai-delta.vercel.app/**",
+  "http://localhost:3000",
+  "http://localhost:3000/auth/confirm",
+  "http://localhost:3000/**",
+]
+
+# Custom email templates. Both include {{ .Token }} so users on iOS
+# PWAs (where magic-link taps open in Safari, not the PWA) can read
+# the code from email and type it into the PWA's sign-in form.
+[remotes.myojrmaenvaexpiiflak.auth.email.template.magic_link]
+subject = "Your Ikigai sign-in link"
+content_path = "./supabase/templates/magic_link.html"
+
+[remotes.myojrmaenvaexpiiflak.auth.email.template.confirmation]
+subject = "Confirm your Ikigai account"
+content_path = "./supabase/templates/confirmation.html"
