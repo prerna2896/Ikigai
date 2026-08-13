@@ -6,24 +6,71 @@
 // user id, and offers a per-row Delete button so a user can surgically
 // clear a stale marker without wiping their whole Dexie DB.
 //
+// M4.2 extension: also shows the offline write queue
+// (`pending_mutations`) with per-row Retry / Discard actions. This is
+// the escape hatch for entries that crossed MAX_RETRIES in the queue
+// drainer — without it a poisoned row would live in Dexie forever
+// with `lastError` populated but no way for the user to act on it.
+//
 // This is intentionally reachable in production. It exposes nothing
 // beyond what a user could already see in DevTools → Application →
 // IndexedDB — just makes it doable from a phone without desktop tooling.
 
 import { useCallback, useEffect, useState } from 'react';
-import { getLocalRepository } from '@ikigai/storage';
+import {
+  getLocalRepository,
+  type PendingMutation,
+} from '@ikigai/storage';
 import { createClient } from '../../../lib/supabase/client';
+import { usePendingMutations } from '../../../components/PendingMutationsProvider';
+
+// Kept in sync with queueDrain.ts MAX_RETRIES. See the same constant
+// in PendingMutationsProvider for the reasoning on duplication.
+const MAX_RETRIES = 5;
 
 type MarkerRow = { key: string; value: string; isCurrentUser: boolean };
 
 type State =
   | { kind: 'loading' }
-  | { kind: 'ready'; userId: string | null; markers: MarkerRow[]; profileName: string | null; weekPlans: number }
+  | {
+      kind: 'ready';
+      userId: string | null;
+      markers: MarkerRow[];
+      profileName: string | null;
+      weekPlans: number;
+    }
   | { kind: 'error'; message: string };
+
+// Render a rough "3 minutes ago" without pulling in a formatter dep.
+// Precision doesn't matter here — the UI just needs to convey "old"
+// vs "recent" so users know whether a stuck row has been sitting.
+function relativeTime(iso: string): string {
+  const then = Date.parse(iso);
+  if (Number.isNaN(then)) return iso;
+  const deltaSec = Math.max(0, Math.round((Date.now() - then) / 1000));
+  if (deltaSec < 60) return `${deltaSec}s ago`;
+  const min = Math.round(deltaSec / 60);
+  if (min < 60) return `${min} min${min === 1 ? '' : 's'} ago`;
+  const hr = Math.round(min / 60);
+  if (hr < 24) return `${hr} hr${hr === 1 ? '' : 's'} ago`;
+  const days = Math.round(hr / 24);
+  return `${days} day${days === 1 ? '' : 's'} ago`;
+}
 
 export default function SyncStatusPage() {
   const [state, setState] = useState<State>({ kind: 'loading' });
   const [busy, setBusy] = useState(false);
+
+  // Pending-mutations queue lives in its own bit of state so it can
+  // refresh independently of the (heavier) markers/profile snapshot.
+  const { list: listPending } = usePendingMutations();
+  const [pending, setPending] = useState<PendingMutation[]>([]);
+  const [pendingBusyId, setPendingBusyId] = useState<number | null>(null);
+
+  const refreshPending = useCallback(async () => {
+    const rows = await listPending();
+    setPending(rows);
+  }, [listPending]);
 
   const load = useCallback(async () => {
     setState({ kind: 'loading' });
@@ -54,13 +101,14 @@ export default function SyncStatusPage() {
         profileName: profile?.name ?? null,
         weekPlans: plans.length,
       });
+      await refreshPending();
     } catch (err) {
       setState({
         kind: 'error',
         message: err instanceof Error ? err.message : String(err),
       });
     }
-  }, []);
+  }, [refreshPending]);
 
   useEffect(() => {
     load();
@@ -89,6 +137,37 @@ export default function SyncStatusPage() {
       setBusy(false);
     }
   };
+
+  const retryPending = async (id: number) => {
+    setPendingBusyId(id);
+    try {
+      const local = getLocalRepository();
+      await local.retryPendingMutation(id);
+      // Kick the drainer so a click-through-Retry replays without
+      // waiting for the 30s poll. `online` is the drainer's public
+      // trigger — no need for a bespoke event.
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('online'));
+      }
+      await refreshPending();
+    } finally {
+      setPendingBusyId(null);
+    }
+  };
+
+  const discardPending = async (id: number, op: string) => {
+    if (!confirm(`Discard queued ${op}? The local mirror stays; the cloud write will never happen.`)) return;
+    setPendingBusyId(id);
+    try {
+      const local = getLocalRepository();
+      await local.deletePendingMutation(id);
+      await refreshPending();
+    } finally {
+      setPendingBusyId(null);
+    }
+  };
+
+  const poisoned = pending.filter((row) => row.retries >= MAX_RETRIES);
 
   return (
     <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-6 px-6 py-12">
@@ -134,6 +213,88 @@ export default function SyncStatusPage() {
             <p className="mt-1 text-sm">
               Week plans in Dexie: <strong>{state.weekPlans}</strong>
             </p>
+          </section>
+
+          <section className="rounded-2xl border border-slate-200 bg-surface p-5">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold text-text">Pending mutations</h2>
+              {pending.length === 0 ? null : poisoned.length > 0 ? (
+                <span
+                  data-testid="poisoned-mutations-header"
+                  className="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-800"
+                >
+                  {poisoned.length} poisoned — need your attention
+                </span>
+              ) : (
+                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                  {pending.length} pending
+                </span>
+              )}
+            </div>
+            {pending.length === 0 ? (
+              <p className="mt-2 text-sm text-mutedText">
+                No queued writes. Everything is synced.
+              </p>
+            ) : (
+              <ul className="mt-3 space-y-3">
+                {pending.map((row) => {
+                  const isPoisoned = row.retries >= MAX_RETRIES;
+                  const disabled = pendingBusyId === row.id;
+                  return (
+                    <li
+                      key={row.id}
+                      data-testid="pending-mutation-row"
+                      data-poisoned={isPoisoned ? 'true' : 'false'}
+                      className={`rounded-lg border p-3 ${
+                        isPoisoned
+                          ? 'border-rose-300 bg-rose-50'
+                          : 'border-slate-200 bg-white'
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                        <p className="font-mono text-xs font-semibold text-text">
+                          {row.op}
+                        </p>
+                        <p className="text-xs text-mutedText">
+                          {relativeTime(row.createdAt)}
+                        </p>
+                      </div>
+                      <p className="mt-1 text-xs text-mutedText">
+                        Retries: <strong>{row.retries}</strong> / {MAX_RETRIES}
+                      </p>
+                      {row.lastError ? (
+                        <p
+                          data-testid="pending-mutation-error"
+                          className="mt-2 break-words rounded bg-slate-100 px-2 py-1 font-mono text-[11px] text-rose-800"
+                        >
+                          {row.lastError}
+                        </p>
+                      ) : null}
+                      <div className="mt-3 flex gap-2">
+                        <button
+                          type="button"
+                          data-testid="pending-mutation-retry"
+                          onClick={() => retryPending(row.id)}
+                          disabled={disabled}
+                          className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-text hover:bg-slate-50 disabled:opacity-50"
+                        >
+                          Retry
+                        </button>
+                        <button
+                          type="button"
+                          data-testid="pending-mutation-discard"
+                          onClick={() => discardPending(row.id, row.op)}
+                          disabled={disabled}
+                          className="rounded-lg border border-rose-300 bg-white px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                        >
+                          Discard
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </section>
 
           <section className="rounded-2xl border border-slate-200 bg-surface p-5">

@@ -8,7 +8,7 @@ import ThemePicker from './ThemePicker';
 import { createClient as createSupabaseClient } from '../lib/supabase/client';
 import { useRepository } from './RepositoryProvider';
 import { useCloudSyncVersion } from './CloudSyncProvider';
-import { usePendingMutationsCount } from './PendingMutationsProvider';
+import { usePendingMutationsCount, usePendingMutationsPoisonedCount } from './PendingMutationsProvider';
 
 const iconClass = 'h-4 w-4';
 
@@ -75,6 +75,7 @@ export default function TopNav() {
   const { profileRepo } = useRepository();
   const cloudVersion = useCloudSyncVersion();
   const pendingCount = usePendingMutationsCount();
+  const poisonedCount = usePendingMutationsPoisonedCount();
 
   useEffect(() => {
     if (!profileRepo) {
@@ -231,15 +232,35 @@ export default function TopNav() {
               {initials}
             </Link>
             {pendingCount > 0 ? (
-              // Subtle amber pill on the corner — communicates "we're
+              // Subtle pill on the corner — communicates "we're
               // holding N writes for you" without pulling focus.
-              <span
-                data-testid="top-nav-unsynced-badge"
-                title={`${pendingCount} unsynced ${pendingCount === 1 ? 'change' : 'changes'} waiting to sync`}
-                className="pointer-events-none absolute -top-1 -right-1 min-w-[16px] rounded-full bg-amber-500 px-1 text-[10px] font-semibold leading-4 text-white shadow-sm"
-              >
-                {pendingCount}
-              </span>
+              // Amber for the ordinary retrying case; red when at
+              // least one row has crossed MAX_RETRIES and needs the
+              // user to Retry or Discard from /dev/sync-status.
+              // Made into a Link (only when poisoned) so it's a
+              // single-tap route to the inspector — the amber
+              // in-flight case stays pointer-events-none because
+              // there's nothing productive for the user to do yet.
+              poisonedCount > 0 ? (
+                <Link
+                  href="/dev/sync-status"
+                  data-testid="top-nav-unsynced-badge"
+                  data-testid-variant="poisoned"
+                  aria-label={`${poisonedCount} sync ${poisonedCount === 1 ? 'error' : 'errors'} needing attention`}
+                  title={`${poisonedCount} sync ${poisonedCount === 1 ? 'error' : 'errors'} — tap to review`}
+                  className="absolute -top-1 -right-1 min-w-[16px] rounded-full bg-rose-600 px-1 text-center text-[10px] font-semibold leading-4 text-white shadow-sm hover:bg-rose-500"
+                >
+                  {pendingCount}
+                </Link>
+              ) : (
+                <span
+                  data-testid="top-nav-unsynced-badge"
+                  title={`${pendingCount} unsynced ${pendingCount === 1 ? 'change' : 'changes'} waiting to sync`}
+                  className="pointer-events-none absolute -top-1 -right-1 min-w-[16px] rounded-full bg-amber-500 px-1 text-[10px] font-semibold leading-4 text-white shadow-sm"
+                >
+                  {pendingCount}
+                </span>
+              )
             ) : null}
           </div>
         </div>
