@@ -415,12 +415,24 @@ export class CloudRepository
     );
     if (planErr) throw planErr;
 
-    // Wipe child rows. Deleting week_domains cascades week_tasks via
-    // the FK, so we don't need a separate week_tasks delete.
-    await Promise.all([
-      this.supabase.from('week_domains').delete().eq('week_plan_id', plan.id),
-      this.supabase.from('week_goals').delete().eq('week_plan_id', plan.id),
-    ]);
+    // UPSERT + delete-missing, NOT wipe-and-reinsert.
+    //
+    // The old code did DELETE FROM week_domains WHERE week_plan_id = X
+    // and let the FK cascade sweep week_tasks. But hours_logged.task_id
+    // also has an ON DELETE CASCADE FK to week_tasks — so wiping the
+    // domains destroyed every logged hour under that plan on every
+    // saveWeekPlan call. Symptom users hit: add an unplanned task,
+    // click Save, all previously-logged hours reset to zero.
+    //
+    // Fix: for each child table (domains, tasks, goals), upsert on
+    // primary id and delete only rows that are no longer in the
+    // incoming plan. Existing rows with unchanged IDs are UPDATED in
+    // place — no cascade, no data loss.
+    const incomingDomainIds = new Set(plan.domains.map((d) => d.id));
+    const incomingTaskIds = new Set(
+      plan.domains.flatMap((d) => d.tasks.map((t) => t.id)),
+    );
+    const incomingGoalIds = new Set((plan.goals ?? []).map((g) => g.id));
 
     if (plan.domains.length > 0) {
       const domainRows = plan.domains.map((d, index) => ({
@@ -434,7 +446,7 @@ export class CloudRepository
       }));
       const { error } = await this.supabase
         .from('week_domains')
-        .insert(domainRows);
+        .upsert(domainRows, { onConflict: 'id' });
       if (error) throw error;
 
       const taskRows = plan.domains.flatMap((d) =>
@@ -452,10 +464,32 @@ export class CloudRepository
       if (taskRows.length > 0) {
         const { error: tasksErr } = await this.supabase
           .from('week_tasks')
-          .insert(taskRows);
+          .upsert(taskRows, { onConflict: 'id' });
         if (tasksErr) throw tasksErr;
       }
     }
+
+    // Delete children that used to exist for this plan but aren't in
+    // the incoming version. `.not('id', 'in', ...)` needs a comma-
+    // separated `(v1,v2)` list; empty set → delete all.
+    const listOrNever = (ids: Set<string>) =>
+      ids.size > 0 ? `(${[...ids].join(',')})` : '(00000000-0000-0000-0000-000000000000)';
+
+    // Delete tasks first (child of domain, and referenced by
+    // hours_logged.task_id — narrowing the surface for cascade harm).
+    const { error: delTasksErr } = await this.supabase
+      .from('week_tasks')
+      .delete()
+      .eq('week_plan_id', plan.id)
+      .not('id', 'in', listOrNever(incomingTaskIds));
+    if (delTasksErr) throw delTasksErr;
+
+    const { error: delDomainsErr } = await this.supabase
+      .from('week_domains')
+      .delete()
+      .eq('week_plan_id', plan.id)
+      .not('id', 'in', listOrNever(incomingDomainIds));
+    if (delDomainsErr) throw delDomainsErr;
 
     if (plan.goals && plan.goals.length > 0) {
       const goalRows = plan.goals.map((g, index) => ({
@@ -468,9 +502,15 @@ export class CloudRepository
       }));
       const { error } = await this.supabase
         .from('week_goals')
-        .insert(goalRows);
+        .upsert(goalRows, { onConflict: 'id' });
       if (error) throw error;
     }
+    const { error: delGoalsErr } = await this.supabase
+      .from('week_goals')
+      .delete()
+      .eq('week_plan_id', plan.id)
+      .not('id', 'in', listOrNever(incomingGoalIds));
+    if (delGoalsErr) throw delGoalsErr;
   }
 
   async deleteWeekPlan(weekId: string): Promise<void> {
@@ -549,47 +589,94 @@ export class CloudRepository
   async saveWeekLog(entry: WeekLogEntry): Promise<void> {
     const userId = await currentUserId(this.supabase);
 
-    // Only touch rows for the tasks in this entry — do NOT wipe
-    // other tasks' rows for the same day. The old implementation
-    // deleted every (user_id, week_plan_id, date_iso) row and
-    // re-inserted, which destroyed prior logs whenever the caller
-    // submitted a partial taskHours map. Real-world example: user
-    // logged 16h of sleep at 10am; opened the form at 2pm to log 2h
-    // of an unplanned task with sleep left blank; sleep dropped from
-    // 16h back to 0.
+    // ADDITIVE semantics: for each (task, hours) in the incoming
+    // entry, ADD the hours to any existing row for
+    // (user_id, task_id, date_iso). If no row exists, insert a new
+    // one. Rows for tasks NOT in the incoming entry are untouched.
     //
-    // We can't use PostgREST's .upsert({ onConflict: ... }) here
-    // because the unique index on (user_id, task_id, date_iso) is
-    // PARTIAL (WHERE task_id IS NOT NULL) — Postgres's ON CONFLICT
-    // needs the WHERE predicate on the constraint spec, which the
-    // Supabase JS client doesn't expose. Instead, delete-only-matching
-    // then insert: two round-trips per save, still O(1) in row count.
+    // Why additive:
+    //   - The LogPanel input placeholder is "+0" and the running
+    //     total shows next to it as "{completed}h logged". Users
+    //     type how much to ADD, not the new total.
+    //   - LocalRepository.saveWeekLog appends a new weekLogs row per
+    //     save and `sumTaskHours` aggregates across rows on read —
+    //     so local is already additive by construction. Cloud must
+    //     match or signed-in users see different behavior than
+    //     signed-out.
+    //
+    // Prior bugs the additive model fixes:
+    //   - Wipe-and-reinsert (original): destroyed OTHER tasks' logs
+    //     on any partial save.
+    //   - Replace-per-task (first fix): fixed the wipe but made
+    //     re-saving the same task on the same date replace instead
+    //     of accumulate. User logs 8h sleep, later logs 4h more,
+    //     expects 12h but sees 4h.
+    //
+    // We can't use PostgREST's .upsert({ onConflict: ... }) with an
+    // increment expression — Supabase JS doesn't accept SQL
+    // expressions in upsert values. Read-then-write is fine for the
+    // small row counts a single save produces.
     const filtered = Object.entries(entry.taskHours).filter(
       ([, hours]) => Number(hours) > 0,
     );
     if (filtered.length === 0) return;
 
     const taskIds = filtered.map(([taskId]) => taskId);
-    const { error: delErr } = await this.supabase
+
+    // Fetch prior hours for these tasks on this date.
+    const { data: existing, error: readErr } = await this.supabase
       .from('hours_logged')
-      .delete()
+      .select('id, task_id, hours')
       .eq('user_id', userId)
       .eq('date_iso', entry.dateISO)
       .in('task_id', taskIds);
-    if (delErr) throw delErr;
+    if (readErr) throw readErr;
 
-    const rows = filtered.map(([taskId, hours]) => ({
-      id: crypto.randomUUID(),
-      user_id: userId,
-      task_id: taskId,
-      week_plan_id: entry.weekId,
-      date_iso: entry.dateISO,
-      hours,
-    }));
-    const { error: insErr } = await this.supabase
-      .from('hours_logged')
-      .insert(rows);
-    if (insErr) throw insErr;
+    const priorByTask = new Map<string, { id: string; hours: number }>();
+    for (const row of existing ?? []) {
+      const tid = row.task_id as string | null;
+      if (!tid) continue;
+      priorByTask.set(tid, {
+        id: row.id as string,
+        hours: Number(row.hours),
+      });
+    }
+
+    // Split into UPDATEs (task already has a row today) and INSERTs
+    // (first log for this task today). Both use Promise.all so a
+    // batch save of N tasks costs 1 read + max(N updates, 1 insert
+    // batch) round-trips.
+    const updates: Array<() => Promise<void>> = [];
+    const inserts: Array<Record<string, unknown>> = [];
+    for (const [taskId, hoursStr] of filtered) {
+      const hours = Number(hoursStr);
+      const prior = priorByTask.get(taskId);
+      if (prior) {
+        updates.push(async () => {
+          const { error } = await this.supabase
+            .from('hours_logged')
+            .update({ hours: prior.hours + hours })
+            .eq('id', prior.id);
+          if (error) throw error;
+        });
+      } else {
+        inserts.push({
+          id: crypto.randomUUID(),
+          user_id: userId,
+          task_id: taskId,
+          week_plan_id: entry.weekId,
+          date_iso: entry.dateISO,
+          hours,
+        });
+      }
+    }
+    await Promise.all(updates.map((run) => run()));
+    if (inserts.length > 0) {
+      const { error: insErr } = await this.supabase
+        .from('hours_logged')
+        .insert(inserts);
+      if (insErr) throw insErr;
+    }
   }
 
   // ─── WeekNote ──────────────────────────────────────────────────────────
