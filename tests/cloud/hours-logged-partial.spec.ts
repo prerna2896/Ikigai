@@ -189,13 +189,13 @@ test.describe('CloudRepository.saveWeekLog — partial writes preserve other tas
     expect(byTask.get(readingTaskId)).toBe(1);
   });
 
-  test('re-saving the same task on the same date replaces (not duplicates) that row', async () => {
+  test('re-saving the same task on the same date ADDS to the running total (additive semantics)', async () => {
     // Fresh date so it doesn't interfere with the previous test.
     const dateIso2 = '2026-09-09';
     const supabase = await clientAsUser(email);
     const repo = new CloudRepository(supabase);
 
-    // Initial: sleep = 8h.
+    // First save: sleep = 8h.
     await repo.saveWeekLog({
       id: 'ignored-3',
       weekId: weekPlanId,
@@ -205,19 +205,21 @@ test.describe('CloudRepository.saveWeekLog — partial writes preserve other tas
       updatedAt: new Date().toISOString(),
     });
 
-    // Amend: sleep = 10h (user realized they slept in longer).
+    // Second save: sleep = 4 (user logs an additional 4h). The
+    // LogPanel input placeholder is "+0" and the total-so-far shows
+    // next to it — users type how many hours to ADD, not the new
+    // total.
     await repo.saveWeekLog({
       id: 'ignored-4',
       weekId: weekPlanId,
       dateISO: dateIso2,
-      taskHours: { [sleepTaskId]: 10 },
+      taskHours: { [sleepTaskId]: 4 },
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     });
 
-    // Exactly one row, with the new hours. Unique index on
-    // (user_id, task_id, date_iso) prevents duplicates; upsert
-    // replaces the existing row via ON CONFLICT.
+    // Still exactly one row (partial unique index prevents
+    // duplicates) but hours = 8 + 4 = 12.
     const rows = await admin
       .from('hours_logged')
       .select('hours')
@@ -225,6 +227,6 @@ test.describe('CloudRepository.saveWeekLog — partial writes preserve other tas
       .eq('date_iso', dateIso2)
       .eq('task_id', sleepTaskId);
     expect(rows.data?.length).toBe(1);
-    expect(Number(rows.data?.[0]?.hours)).toBe(10);
+    expect(Number(rows.data?.[0]?.hours)).toBe(12);
   });
 });
