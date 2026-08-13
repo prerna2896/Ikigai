@@ -6,7 +6,8 @@ import { type Profile } from '@ikigai/core';
 import { OnboardingProgress } from '../../../components/OnboardingProgress';
 import OnboardingMonk from '../../../components/OnboardingMonk';
 import { useRepository } from '../../../components/RepositoryProvider';
-import { clearForm, retrieveForm, stashForm } from '../../../lib/formStash';
+import { useStashedField } from '../../../lib/useStashedField';
+import { StashRestoreBanner } from '../../../components/StashRestoreBanner';
 
 const STASH_KEY = 'onboarding.goalText';
 
@@ -50,12 +51,14 @@ export default function OnboardingGoalsPage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [selectedAreas, setSelectedAreas] = useState<string[]>([]);
   const [goals, setGoals] = useState<GoalEntry[]>([]);
-  const [goalText, setGoalText] = useState<string>(
-    () => retrieveForm<string>(STASH_KEY) ?? '',
-  );
-  useEffect(() => {
-    stashForm(STASH_KEY, goalText);
-  }, [goalText]);
+  const {
+    value: goalText,
+    setValue: setGoalText,
+    pendingRestore: goalTextRestore,
+    restore: restoreGoalText,
+    discard: discardGoalText,
+    clear: clearGoalText,
+  } = useStashedField<string>(STASH_KEY, '');
   const [goalTimeline, setGoalTimeline] = useState('1_month');
   const [status, setStatus] = useState<string | null>(null);
 
@@ -106,7 +109,8 @@ export default function OnboardingGoalsPage() {
     };
     setGoals((prev) => [...prev, newGoal]);
     setGoalText('');
-    clearForm(STASH_KEY);
+    // Goal captured into `goals` — the input's stash is stale now.
+    clearGoalText();
     setGoalTimeline('1_month');
   };
 
@@ -204,6 +208,12 @@ export default function OnboardingGoalsPage() {
 
         <div className="rounded-2xl border border-slate-200 bg-surface p-6 shadow-sm">
           <div className="flex flex-col gap-3">
+            {goalTextRestore !== null ? (
+              <StashRestoreBanner
+                onRestore={restoreGoalText}
+                onDiscard={discardGoalText}
+              />
+            ) : null}
             <label className="flex flex-col gap-2 text-sm text-mutedText">
               Add a goal
               <input

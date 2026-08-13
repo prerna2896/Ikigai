@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { errorMessage } from '../lib/errors';
-import { retrieveForm, stashForm } from '../lib/formStash';
+import { useStashedField } from '../lib/useStashedField';
+import { StashRestoreBanner } from './StashRestoreBanner';
 import {
   IKIGAI_PRINCIPLE_LABEL,
   IKIGAI_PRINCIPLE_IDS,
@@ -61,14 +62,18 @@ export default function LogPanel({
   // Proof-of-concept for the form-stash pattern: if a session expires
   // while a user is typing here, they can sign back in and their draft
   // is still there. Namespace the key with the plan id so switching
-  // between weeks doesn't cross-pollinate drafts.
+  // between weeks doesn't cross-pollinate drafts. The hook exposes a
+  // pendingRestore so we can prompt the user via <StashRestoreBanner>
+  // instead of silently auto-filling.
   const stashKey = `logPanel.unplannedTitle:${weekPlan.id}`;
-  const [unplannedTitle, setUnplannedTitle] = useState<string>(
-    () => retrieveForm<string>(stashKey) ?? '',
-  );
-  useEffect(() => {
-    stashForm(stashKey, unplannedTitle);
-  }, [stashKey, unplannedTitle]);
+  const {
+    value: unplannedTitle,
+    setValue: setUnplannedTitle,
+    pendingRestore: unplannedTitleRestore,
+    restore: restoreUnplannedTitle,
+    discard: discardUnplannedTitle,
+    clear: clearUnplannedTitle,
+  } = useStashedField<string>(stashKey, '');
   const [unplannedHours, setUnplannedHours] = useState('1');
   const [unplannedDomainId, setUnplannedDomainId] = useState<string | null>(
     weekPlan.domains[0]?.id ?? null,
@@ -293,6 +298,9 @@ export default function LogPanel({
       setLogForm({});
       setUnplannedTasks([]);
       setUnplannedTitle('');
+      // Successful save = the draft is now recorded, clear the stash
+      // so we don't offer a stale restore banner next mount.
+      clearUnplannedTitle();
       setUnplannedHours('1');
       setStatus('Logged.');
       onLogSaved?.();
@@ -519,6 +527,14 @@ export default function LogPanel({
                 </div>
               );
             })}
+          </div>
+        ) : null}
+        {unplannedTitleRestore !== null ? (
+          <div className="mt-3">
+            <StashRestoreBanner
+              onRestore={restoreUnplannedTitle}
+              onDiscard={discardUnplannedTitle}
+            />
           </div>
         ) : null}
         <div className="mt-3 flex flex-wrap items-center gap-3">

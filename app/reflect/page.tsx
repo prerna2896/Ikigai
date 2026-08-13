@@ -16,14 +16,22 @@ import {
 import { useRepository } from '../../components/RepositoryProvider';
 import { useCloudSyncVersion } from '../../components/CloudSyncProvider';
 import type { WeekNoteRepository } from '@ikigai/storage';
-import { clearForm, retrieveForm, stashForm } from '../../lib/formStash';
+import { useStashedField } from '../../lib/useStashedField';
+import { StashRestoreBanner } from '../../components/StashRestoreBanner';
 
 // Session-storage keys for the two long-form text inputs on this
 // page. Draft is scoped per reflection-category so switching between
 // categories doesn't cross-pollinate drafts; check-in is a single
 // singleton key. See lib/formStash.ts for the namespace + envelope.
+//
+// When no category is open we still have to give useStashedField a
+// stable key (hooks can't be conditional). The `__none__` sentinel
+// slot is never actually written to — stashForm is only called via
+// setValue, which we never call while no category is active.
+const NO_CATEGORY_KEY = '__none__';
 const stashKey = {
-  draft: (categoryId: CategoryId) => `reflect.draft:${categoryId}`,
+  draft: (categoryId: CategoryId | null) =>
+    `reflect.draft:${categoryId ?? NO_CATEGORY_KEY}`,
   checkIn: () => 'reflect.checkIn',
 } as const;
 
@@ -95,27 +103,30 @@ function ReflectPageContent() {
   const [activeCategoryId, setActiveCategoryId] = useState<CategoryId | null>(
     null,
   );
-  const [draft, setDraft] = useState('');
+  // Category-scoped draft. The hook is keyed on activeCategoryId, so
+  // opening a new category re-derives pendingRestore against that
+  // category's slot in sessionStorage — no more manual retrieveForm
+  // in openCategory().
+  const {
+    value: draft,
+    setValue: setDraft,
+    pendingRestore: draftRestore,
+    restore: restoreDraft,
+    discard: discardDraft,
+    clear: clearDraft,
+  } = useStashedField<string>(stashKey.draft(activeCategoryId), '');
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [justSavedId, setJustSavedId] = useState<string | null>(null);
   const [checkInEmoji, setCheckInEmoji] = useState<string | null>(null);
-  const [checkInText, setCheckInText] = useState<string>(
-    () => retrieveForm<string>(stashKey.checkIn()) ?? '',
-  );
-
-  // Persist the two long-form drafts across reloads / re-auth cycles.
-  // Category-scoped draft: only stash while a category is open — the
-  // key lookup depends on activeCategoryId. Check-in text is a
-  // singleton, always stashed.
-  useEffect(() => {
-    if (!activeCategoryId) return;
-    stashForm(stashKey.draft(activeCategoryId), draft);
-  }, [activeCategoryId, draft]);
-
-  useEffect(() => {
-    stashForm(stashKey.checkIn(), checkInText);
-  }, [checkInText]);
+  const {
+    value: checkInText,
+    setValue: setCheckInText,
+    pendingRestore: checkInRestore,
+    restore: restoreCheckIn,
+    discard: discardCheckIn,
+    clear: clearCheckIn,
+  } = useStashedField<string>(stashKey.checkIn(), '');
   const [isSavingCheckIn, setIsSavingCheckIn] = useState(false);
   const [checkInStatus, setCheckInStatus] = useState<string | null>(null);
   const [checkInError, setCheckInError] = useState<string | null>(null);
@@ -158,7 +169,6 @@ function ReflectPageContent() {
     const handleKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setActiveCategoryId(null);
-        setDraft('');
         setJustSavedId(null);
       }
     };
@@ -188,20 +198,19 @@ function ReflectPageContent() {
   }, [notes, activeCategoryId]);
 
   const openCategory = (id: CategoryId) => {
+    // Just switch the active id — useStashedField re-keys on
+    // activeCategoryId and re-derives pendingRestore itself, so we
+    // no longer read stash directly here.
     setActiveCategoryId(id);
-    // Restore any stashed draft for this specific category. If there
-    // isn't one, this falls back to the empty state we want anyway.
-    setDraft(retrieveForm<string>(stashKey.draft(id)) ?? '');
     setJustSavedId(null);
     setError(null);
   };
 
   const closeModal = () => {
     // Leave the stash in place — user closed the modal but didn't
-    // save; if they reopen the same category their draft should still
-    // be there. Only saves + explicit resets clear the stash.
+    // save. If they reopen the same category the banner will offer
+    // to restore. Only saves + explicit Discard clear the stash.
     setActiveCategoryId(null);
-    setDraft('');
     setJustSavedId(null);
   };
 
@@ -234,7 +243,7 @@ function ReflectPageContent() {
       setDraft('');
       // Successful save = draft is now persisted in cloud, no longer
       // an in-progress local artifact.
-      clearForm(stashKey.draft(activeCategory.id));
+      clearDraft();
       closeModal();
     } catch (err) {
       setError(errorMessage(err));
@@ -272,7 +281,7 @@ function ReflectPageContent() {
       await refreshLatestNotes(weekNoteRepo, latestWeek);
       setCheckInEmoji(null);
       setCheckInText('');
-      clearForm(stashKey.checkIn());
+      clearCheckIn();
       setCheckInStatus('Logged.');
       window.setTimeout(() => setCheckInStatus(null), 1500);
     } catch (err) {
@@ -377,6 +386,14 @@ function ReflectPageContent() {
             </span>
           ) : null}
         </div>
+        {checkInRestore !== null ? (
+          <div className="mt-3">
+            <StashRestoreBanner
+              onRestore={restoreCheckIn}
+              onDiscard={discardCheckIn}
+            />
+          </div>
+        ) : null}
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <div
             className="flex items-center gap-1"
@@ -466,6 +483,9 @@ function ReflectPageContent() {
           entries={activeEntries}
           draft={draft}
           onDraftChange={setDraft}
+          draftRestore={draftRestore}
+          onRestoreDraft={restoreDraft}
+          onDiscardDraft={discardDraft}
           onClose={closeModal}
           onSave={handleSave}
           isSaving={isSaving}
@@ -591,6 +611,9 @@ type ReflectModalProps = {
   entries: ParsedNote[];
   draft: string;
   onDraftChange: (value: string) => void;
+  draftRestore: string | null;
+  onRestoreDraft: () => void;
+  onDiscardDraft: () => void;
   onClose: () => void;
   onSave: () => void;
   isSaving: boolean;
@@ -604,6 +627,9 @@ function ReflectModal({
   entries,
   draft,
   onDraftChange,
+  draftRestore,
+  onRestoreDraft,
+  onDiscardDraft,
   onClose,
   onSave,
   isSaving,
@@ -665,6 +691,14 @@ function ReflectModal({
           >
             Add a new note
           </label>
+          {draftRestore !== null ? (
+            <div className="mt-2">
+              <StashRestoreBanner
+                onRestore={onRestoreDraft}
+                onDiscard={onDiscardDraft}
+              />
+            </div>
+          ) : null}
           <textarea
             id="reflect-draft"
             rows={4}

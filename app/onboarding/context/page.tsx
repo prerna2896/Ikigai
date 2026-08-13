@@ -7,7 +7,8 @@ import { OnboardingProgress } from '../../../components/OnboardingProgress';
 import OnboardingMonk from '../../../components/OnboardingMonk';
 import { OnboardingH1, OnboardingBody, OnboardingLabel } from '../../../components/OnboardingTypography';
 import { useRepository } from '../../../components/RepositoryProvider';
-import { clearForm, retrieveForm, stashForm } from '../../../lib/formStash';
+import { useStashedField } from '../../../lib/useStashedField';
+import { StashRestoreBanner } from '../../../components/StashRestoreBanner';
 
 const STASH_KEY = 'onboarding.nameInput';
 
@@ -16,12 +17,17 @@ export default function OnboardingContextPage() {
   const { profileRepo, settingsRepo } = useRepository();
   const [status, setStatus] = useState<string | null>(null);
   const [profileName, setProfileName] = useState<string | null>(null);
-  const [nameInput, setNameInput] = useState<string>(
-    () => retrieveForm<string>(STASH_KEY) ?? '',
-  );
-  useEffect(() => {
-    stashForm(STASH_KEY, nameInput);
-  }, [nameInput]);
+  // Anonymous-users only field — the profile-fetch effect below will
+  // redirect away if a profile with a name already exists, so this
+  // hook's initialValue of '' is always correct on this route.
+  const {
+    value: nameInput,
+    setValue: setNameInput,
+    pendingRestore: nameInputRestore,
+    restore: restoreNameInput,
+    discard: discardNameInput,
+    clear: clearNameInput,
+  } = useStashedField<string>(STASH_KEY, '');
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isTyping, setIsTyping] = useState(false);
 
@@ -47,7 +53,9 @@ export default function OnboardingContextPage() {
         setProfile(profileRecord);
         const firstName = trimmedName ? trimmedName.split(/\s+/)[0] : '';
         setProfileName(firstName || null);
-        setNameInput(trimmedName || '');
+        // Deliberately don't call setNameInput here — the hook's
+        // initialValue of '' already covers the "empty profile" case,
+        // and re-setting from an effect would race with pendingRestore.
       })
       .catch((error) => {
         if (!cancelled) setStatus(String(error));
@@ -75,6 +83,12 @@ export default function OnboardingContextPage() {
           {!profile ? (
             <OnboardingLabel className="flex flex-col gap-2">
               What should we call you?
+              {nameInputRestore !== null ? (
+                <StashRestoreBanner
+                  onRestore={restoreNameInput}
+                  onDiscard={discardNameInput}
+                />
+              ) : null}
               <input
                 type="text"
                 className="rounded-xl border border-slate-200 px-4 py-3 text-text text-base min-h-12"
@@ -149,7 +163,7 @@ export default function OnboardingContextPage() {
                     updatedAt: nowIso,
                   });
                   // Name is now persisted; the stash is no longer useful.
-                  clearForm(STASH_KEY);
+                  clearNameInput();
                 }
                 router.replace('/onboarding/tone');
               }}

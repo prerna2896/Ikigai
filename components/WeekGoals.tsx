@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import type { WeekGoal, WeekPlan } from '@ikigai/core';
 import type { WeekPlanRepository } from '@ikigai/storage';
 import { useRepository } from './RepositoryProvider';
-import { clearForm, retrieveForm, stashForm } from '../lib/formStash';
+import { useStashedField } from '../lib/useStashedField';
+import { StashRestoreBanner } from './StashRestoreBanner';
 
 // The in-progress "new goal" input, keyed per week plan so users
 // working on multiple weeks (rare but possible) don't cross-
@@ -38,22 +39,23 @@ export default function WeekGoals({
 }: WeekGoalsProps) {
   const { weekPlanRepo } = useRepository();
   const [goals, setGoals] = useState<WeekGoal[]>(() => ensureGoals(plan));
-  const [draft, setDraft] = useState<string>(
-    () => retrieveForm<string>(stashKey(plan.id)) ?? '',
-  );
+  // Draft input is per-plan. The hook re-keys on the plan id so
+  // navigating to a different week picks up that week's stash instead
+  // of the previous one's (and offers a banner rather than silently
+  // pre-filling).
+  const {
+    value: draft,
+    setValue: setDraft,
+    pendingRestore: draftRestore,
+    restore: restoreDraft,
+    discard: discardDraft,
+    clear: clearDraft,
+  } = useStashedField<string>(stashKey(plan.id), '');
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setGoals(ensureGoals(plan));
-    // If the mounted plan changed (rare — user navigated to a
-    // different week), pick up that week's stash instead of the
-    // previous week's.
-    setDraft(retrieveForm<string>(stashKey(plan.id)) ?? '');
   }, [plan]);
-
-  useEffect(() => {
-    stashForm(stashKey(plan.id), draft);
-  }, [plan.id, draft]);
 
   const completedCount = useMemo(
     () => goals.filter((g) => g.completedAt).length,
@@ -81,7 +83,9 @@ export default function WeekGoals({
       completedAt: null,
     };
     setDraft('');
-    clearForm(stashKey(plan.id));
+    // Goal is now committed to the plan — the in-progress draft is
+    // no longer meaningful, so purge the stash.
+    clearDraft();
     void commit([...goals, newGoal]);
   };
 
@@ -214,31 +218,41 @@ export default function WeekGoals({
       </ul>
 
       {mode === 'editor' && goals.length < MAX_GOALS ? (
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <input
-            type="text"
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault();
-                handleAdd();
-              }
-            }}
-            placeholder={`Goal ${goals.length + 1} (e.g. ship the prototype)`}
-            data-testid="week-goal-input"
-            className="min-w-[180px] flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-text focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-1"
-          />
-          <button
-            type="button"
-            onClick={handleAdd}
-            disabled={draft.trim().length === 0}
-            data-testid="week-goal-add"
-            className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-medium text-text disabled:opacity-60"
-          >
-            Add goal
-          </button>
-        </div>
+        <>
+          {draftRestore !== null ? (
+            <div className="mt-3">
+              <StashRestoreBanner
+                onRestore={restoreDraft}
+                onDiscard={discardDraft}
+              />
+            </div>
+          ) : null}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  handleAdd();
+                }
+              }}
+              placeholder={`Goal ${goals.length + 1} (e.g. ship the prototype)`}
+              data-testid="week-goal-input"
+              className="min-w-[180px] flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-text focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-1"
+            />
+            <button
+              type="button"
+              onClick={handleAdd}
+              disabled={draft.trim().length === 0}
+              data-testid="week-goal-add"
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-medium text-text disabled:opacity-60"
+            >
+              Add goal
+            </button>
+          </div>
+        </>
       ) : null}
 
       {mode === 'editor' && goals.length === 0 ? (
