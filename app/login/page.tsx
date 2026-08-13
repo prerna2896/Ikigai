@@ -35,7 +35,27 @@ type Status =
   | { kind: 'sending' }
   | { kind: 'sent'; email: string; resending: boolean; justResent: boolean }
   | { kind: 'verifying' }
+  // Signup confirmation gate. Reached when signInWithOtp is called with
+  // shouldCreateUser: false and Supabase reports no user for that email.
+  // We stash the address so the "Create account and send code" button
+  // can retry with the create flag on WITHOUT re-prompting the user for
+  // the email — that would feel like the app forgot what they typed.
+  | { kind: 'signup-confirm'; email: string; creating: boolean }
   | { kind: 'error'; message: string };
+
+// Supabase surfaces "no user for that email + shouldCreateUser=false"
+// in a few slightly different shapes depending on the SDK version and
+// the exact provider config. Match any of them so a real typo doesn't
+// accidentally slip through as a generic error.
+function isUserNotFoundError(message: string): boolean {
+  const m = message.toLowerCase();
+  return (
+    m.includes('user not found') ||
+    m.includes('signups not allowed') ||
+    m.includes('signup is disabled') ||
+    m.includes('signups are not allowed for otp')
+  );
+}
 
 function LoginForm() {
   // createClient() is called lazily inside handlers, not at render-time,
@@ -56,8 +76,15 @@ function LoginForm() {
   const codeIsSet = code.trim().replace(/\s/g, '').length === 6;
   const busy = status.kind === 'sending' || status.kind === 'verifying';
 
+  // `create` controls Supabase's shouldCreateUser flag. Default is
+  // false so a typo email doesn't silently create an orphaned
+  // auth.users row (the previous default behavior — anyone could
+  // accidentally register `alise@example.com` while trying to type
+  // `alice@`, leaving a phantom account behind). On confirmed signup
+  // (user clicks "Create account and send code"), we retry with true.
   const sendMagicLink = async (
     address: string,
+    create: boolean,
   ): Promise<{ ok: true } | { ok: false; message: string }> => {
     // The emailed link points at /auth/confirm?token_hash=…&type=…&next=…
     // (see supabase/templates/*.html). emailRedirectTo isn't consulted
@@ -70,7 +97,7 @@ function LoginForm() {
 
     const { error } = await createClient().auth.signInWithOtp({
       email: address,
-      options: { emailRedirectTo },
+      options: { emailRedirectTo, shouldCreateUser: create },
     });
     if (error) return { ok: false, message: error.message };
     return { ok: true };
@@ -81,8 +108,16 @@ function LoginForm() {
     if (!emailIsSet || busy) return;
     const trimmed = email.trim().toLowerCase();
     setStatus({ kind: 'sending' });
-    const result = await sendMagicLink(trimmed);
+    const result = await sendMagicLink(trimmed, false);
     if (!result.ok) {
+      if (isUserNotFoundError(result.message)) {
+        // Not a hard error — most likely first-time signup. Route
+        // through the confirmation gate instead of the generic error
+        // banner. User can either "Create account and send code" or
+        // hit "Use a different email" to correct a typo.
+        setStatus({ kind: 'signup-confirm', email: trimmed, creating: false });
+        return;
+      }
       setStatus({ kind: 'error', message: result.message });
       return;
     }
@@ -94,10 +129,29 @@ function LoginForm() {
     });
   };
 
+  const handleConfirmSignup = async () => {
+    if (status.kind !== 'signup-confirm' || status.creating) return;
+    setStatus({ ...status, creating: true });
+    const result = await sendMagicLink(status.email, true);
+    if (!result.ok) {
+      setStatus({ kind: 'error', message: result.message });
+      return;
+    }
+    setStatus({
+      kind: 'sent',
+      email: status.email,
+      resending: false,
+      justResent: false,
+    });
+  };
+
   const handleResend = async () => {
     if (status.kind !== 'sent' || status.resending) return;
     setStatus({ ...status, resending: true, justResent: false });
-    const result = await sendMagicLink(status.email);
+    // Resending an OTP for an already-created user — pass create=true
+    // so if the previous send raced a signup delete or the user
+    // account was cleaned up between attempts we still succeed.
+    const result = await sendMagicLink(status.email, true);
     if (!result.ok) {
       setStatus({ kind: 'error', message: result.message });
       return;
@@ -252,6 +306,43 @@ function LoginForm() {
                 setCode('');
                 router.refresh();
               }}
+            >
+              Use a different email
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {status.kind === 'signup-confirm' ? (
+        <div
+          role="status"
+          data-testid="login-signup-confirm"
+          className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-text"
+        >
+          <p className="font-medium">No account for {status.email}.</p>
+          <p className="mt-1 text-mutedText">
+            If this is your first time, we can create one. Otherwise,
+            check for typos and try a different address.
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              disabled={status.creating}
+              onClick={handleConfirmSignup}
+              data-testid="login-confirm-signup"
+              className="rounded-xl bg-accent px-3 py-2 text-xs font-medium text-white shadow-sm disabled:opacity-60"
+            >
+              {status.creating ? 'Creating…' : 'Create account and send code'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setStatus({ kind: 'idle' });
+                setEmail('');
+                setCode('');
+              }}
+              data-testid="login-signup-use-different-email"
+              className="text-xs text-mutedText underline-offset-2 hover:underline hover:text-text"
             >
               Use a different email
             </button>
