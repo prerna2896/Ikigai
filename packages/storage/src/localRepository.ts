@@ -530,6 +530,42 @@ export class LocalRepository
   async countPendingMutations(userId: string): Promise<number> {
     return this.db.pending_mutations.where('userId').equals(userId).count();
   }
+
+  // Single-row lookup. Used by the pending-sync inspector UI when
+  // taking an action on a specific queued row and needing to
+  // double-check its current state (e.g. did the drainer succeed
+  // between render and click).
+  async getPendingMutation(id: number): Promise<PendingMutation | null> {
+    const row = await this.db.pending_mutations.get(id);
+    return row ?? null;
+  }
+
+  // "Discard" from the UI escape hatch. A user telling us to give up
+  // on a poisoned entry is authoritative — we drop the queue row and
+  // do NOT try to undo the Dexie mirror that was written when the
+  // mutation was originally enqueued. Undoing the mirror is out of
+  // scope: some ops (delete*) have no natural inverse and leaving the
+  // mirror keeps the local view stable; the cloud row simply never
+  // materializes.
+  async deletePendingMutation(id: number): Promise<void> {
+    await this.db.pending_mutations.delete(id);
+  }
+
+  // "Retry" from the UI escape hatch. Resets the retry counter and
+  // clears lastError so the next drainer tick treats the entry as
+  // fresh — the drainer's per-tick "skip past MAX_RETRIES" check will
+  // no longer skip it. We do NOT drain synchronously here: keeping
+  // drain scheduling centralized in queueDrain avoids two code paths
+  // racing to replay the same row.
+  async retryPendingMutation(id: number): Promise<void> {
+    const existing = await this.db.pending_mutations.get(id);
+    if (!existing) return;
+    await this.db.pending_mutations.put({
+      ...existing,
+      retries: 0,
+      lastError: null,
+    });
+  }
 }
 
 let cachedRepository: LocalRepository | null = null;
