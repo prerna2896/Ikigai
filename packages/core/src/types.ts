@@ -121,6 +121,11 @@ export type DomainTask = {
   plannedHours: number;
   actualHours?: number;
   tags?: string[];
+  // ISO timestamp when the user marked the task done from the log
+  // form. Independent of hours logged — a task can be completed with
+  // zero hours logged, or logged past its plannedHours without being
+  // marked complete. Null / missing means not-yet-done.
+  completedAt?: string | null;
 };
 
 export type WeekDomain = {

@@ -109,6 +109,7 @@ export const domainTaskSchema = z.object({
   plannedHours: nonNegativeNumber,
   actualHours: nonNegativeNumber.optional(),
   tags: z.array(z.string()).optional(),
+  completedAt: isoDateString.nullable().optional(),
 });
 
 export const weekDomainSchema = z.object({
