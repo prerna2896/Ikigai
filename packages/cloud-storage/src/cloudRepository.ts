@@ -679,6 +679,18 @@ export class CloudRepository
         .insert(inserts);
       if (insErr) throw insErr;
     }
+
+    // Bump profiles.last_activity_at so the home-page greeting
+    // ("It's been N days") reflects that the user just logged. Local
+    // repo does this in bumpProfileActivity — cloud didn't, so
+    // signed-in users saw a stale greeting no matter how often they
+    // logged. Awaited: PostgrestBuilder only fires on .then(), so
+    // `void builder` would silently drop the request.
+    const { error: bumpErr } = await this.supabase
+      .from('profiles')
+      .update({ last_activity_at: new Date().toISOString() })
+      .eq('user_id', userId);
+    if (bumpErr) throw bumpErr;
   }
 
   // ─── WeekNote ──────────────────────────────────────────────────────────

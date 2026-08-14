@@ -88,48 +88,67 @@ export default function HomePage() {
     if (!profileRepo || !settingsRepo || !weekPlanRepo) return;
     setNow(new Date());
     let cancelled = false;
-    try {
-      Promise.all([
-        profileRepo.getProfile(),
-        settingsRepo.getSettings(),
-        weekPlanRepo.listWeekPlans(),
-      ])
-        .then(([profileRecord, settingsRecord, plans]) => {
+
+    const applyReady = (
+      profileRecord: Awaited<ReturnType<typeof profileRepo.getProfile>>,
+      settingsRecord: Awaited<ReturnType<typeof settingsRepo.getSettings>>,
+      plans: Awaited<ReturnType<typeof weekPlanRepo.listWeekPlans>>,
+    ) => {
+      const hasOnboarded = Boolean(profileRecord?.name);
+      if (!hasOnboarded) {
+        setState({ kind: 'no-onboarding' });
+        return;
+      }
+      const sorted = [...plans].sort((a, b) =>
+        a.weekStartISO < b.weekStartISO ? 1 : -1,
+      );
+      const status = resolveCurrentWeek(sorted, settingsRecord);
+      const latest = sorted[0] ? withDerivedPlannedHours(sorted[0]) : null;
+      const normalizedStatus: CurrentWeekStatus =
+        status.kind === 'planned'
+          ? { ...status, plan: withDerivedPlannedHours(status.plan) }
+          : status;
+      setState({
+        kind: 'ready',
+        profile: profileRecord,
+        settings: settingsRecord,
+        weekStatus: normalizedStatus,
+        latestPlan: latest,
+      });
+    };
+
+    // Retry once on clock-skew ("JWT issued at future"). Real cause:
+    // Supabase auth server's clock is momentarily ahead of the
+    // client's, so the JWT the client just received looks like it
+    // came from the future. Resolves within ~1s as system clocks
+    // converge (or the JWT ages past the client's now). Without a
+    // retry, the app got stuck on "Loading…" behind an error banner
+    // until the user clicked something to re-trigger the effect.
+    const load = async (attempt: number): Promise<void> => {
+      try {
+        const [profileRecord, settingsRecord, plans] = await Promise.all([
+          profileRepo.getProfile(),
+          settingsRepo.getSettings(),
+          weekPlanRepo.listWeekPlans(),
+        ]);
+        if (cancelled) return;
+        applyReady(profileRecord, settingsRecord, plans);
+      } catch (err) {
+        if (cancelled) return;
+        const raw = errorMessage(err);
+        if (attempt === 0 && /issued at future/i.test(raw)) {
+          await new Promise((r) => setTimeout(r, 1500));
           if (cancelled) return;
-          const hasOnboarded = Boolean(profileRecord?.name);
-          if (!hasOnboarded) {
-            // New user: no cloud profile yet. Show the Begin CTA,
-            // regardless of any stale local Dexie plans (those belong
-            // to whoever used this browser before — a previous email,
-            // or a pre-cloud session).
-            setState({ kind: 'no-onboarding' });
-            return;
-          }
-          const sorted = [...plans].sort((a, b) =>
-            a.weekStartISO < b.weekStartISO ? 1 : -1,
-          );
-          const status = resolveCurrentWeek(sorted, settingsRecord);
-          const latest = sorted[0]
-            ? withDerivedPlannedHours(sorted[0])
-            : null;
-          const normalizedStatus: CurrentWeekStatus =
-            status.kind === 'planned'
-              ? { ...status, plan: withDerivedPlannedHours(status.plan) }
-              : status;
-          setState({
-            kind: 'ready',
-            profile: profileRecord,
-            settings: settingsRecord,
-            weekStatus: normalizedStatus,
-            latestPlan: latest,
-          });
-        })
-        .catch((err) => {
-          if (!cancelled) setError(errorMessage(err));
-        });
-    } catch (err) {
-      setError(errorMessage(err));
-    }
+          return load(1);
+        }
+        // Fall back to a usable state instead of hanging on
+        // "Loading…" — the user should be able to at least sign out
+        // or hit Begin from here.
+        setError(raw);
+        setState({ kind: 'no-onboarding' });
+      }
+    };
+    void load(0);
     return () => {
       cancelled = true;
     };
