@@ -328,6 +328,7 @@ export class CloudRepository
         title: t.title,
         plannedHours: numOr(t.planned_hours, 0),
         tags: t.tags ?? undefined,
+        completedAt: (t.completed_at as string | null | undefined) ?? null,
       });
       tasksByDomain.set(domainId, list);
     }
@@ -459,6 +460,7 @@ export class CloudRepository
           planned_hours: t.plannedHours,
           position: index,
           tags: t.tags ?? null,
+          completed_at: t.completedAt ?? null,
         })),
       );
       if (taskRows.length > 0) {

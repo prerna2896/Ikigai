@@ -120,11 +120,42 @@ export default function LogPanel({
             title: task.title,
             plannedHours: task.plannedHours,
             domainName: domain.name,
+            completedAt: task.completedAt ?? null,
           })),
         )
         .sort((a, b) => b.plannedHours - a.plannedHours),
     [plan],
   );
+
+  // Toggle a task's completed_at in one round-trip through the repo.
+  // Deliberately NOT batched with the Save-log flow — the checkbox is
+  // a discrete affordance and users expect immediate persistence, same
+  // as the WeekGoals done toggle.
+  const handleToggleDone = async (taskId: string) => {
+    if (!weekPlanRepo) return;
+    const nowIso = new Date().toISOString();
+    const nextPlan: WeekPlan = {
+      ...plan,
+      domains: plan.domains.map((domain) => ({
+        ...domain,
+        tasks: domain.tasks.map((task) =>
+          task.id === taskId
+            ? { ...task, completedAt: task.completedAt ? null : nowIso }
+            : task,
+        ),
+      })),
+    };
+    // Optimistic — the plan re-derivation is cheap and the write is
+    // idempotent, so a rollback on failure just resets the toggle.
+    setPlan(nextPlan);
+    try {
+      await weekPlanRepo.saveWeekPlan(nextPlan);
+      onPlanChange?.(nextPlan);
+    } catch (err) {
+      setError(errorMessage(err));
+      setPlan(plan);
+    }
+  };
 
   const weekTotals = useMemo(() => {
     const totals: Record<string, number> = {};
@@ -462,7 +493,11 @@ export default function LogPanel({
                 >
                   {getDomainIcon(task.domainName)}
                 </span>
-                <p className="min-w-0 flex-1 truncate font-medium">
+                <p
+                  className={`min-w-0 flex-1 truncate font-medium ${
+                    task.completedAt ? 'text-mutedText line-through' : ''
+                  }`}
+                >
                   {task.title}
                 </p>
                 <div className="flex shrink-0 flex-col items-end leading-tight">
@@ -499,6 +534,38 @@ export default function LogPanel({
                   }
                   placeholder="+0"
                 />
+                {/* Mark task done in one tap — independent of hours logged.
+                    A user can check this without entering any hours (e.g.
+                    task complete but not time-tracked) or entering hours
+                    but not checking (e.g. logged some progress, not done
+                    yet). Persists immediately via handleToggleDone. */}
+                <button
+                  type="button"
+                  aria-label={
+                    task.completedAt ? 'Mark as not done' : 'Mark as done'
+                  }
+                  aria-pressed={Boolean(task.completedAt)}
+                  data-testid={`log-task-done-${task.id}`}
+                  onClick={() => handleToggleDone(task.id)}
+                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition-colors ${
+                    task.completedAt
+                      ? 'border-accent bg-accent text-white'
+                      : 'border-slate-300 bg-white text-transparent hover:border-accent/60'
+                  }`}
+                >
+                  <svg
+                    viewBox="0 0 16 16"
+                    aria-hidden
+                    className="h-3.5 w-3.5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M3 8l3.5 3.5L13 5" />
+                  </svg>
+                </button>
                 </div>
               </div>
             );

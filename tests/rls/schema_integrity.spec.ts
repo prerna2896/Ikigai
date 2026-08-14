@@ -232,6 +232,7 @@ test.describe('schema integrity — every migration produced the shape schema.ts
         'title',
         'planned_hours',
         'position',
+        'completed_at',
       ],
       week_goals: ['id', 'user_id', 'week_plan_id', 'text', 'position'],
       hours_logged: [

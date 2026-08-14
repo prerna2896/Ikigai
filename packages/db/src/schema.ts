@@ -243,6 +243,13 @@ export const weekTasks = pgTable(
       .default('0'),
     position: integer('position').notNull().default(0),
     tags: text('tags').array(),
+    // Independent of hours_logged — logging 2h of a 4h task doesn't
+    // imply completion, and marking done doesn't auto-log the
+    // remaining hours. See migration 0004.
+    completedAt: timestamp('completed_at', {
+      withTimezone: true,
+      mode: 'string',
+    }),
     ...auditColumns(),
   },
   (t) => ({
