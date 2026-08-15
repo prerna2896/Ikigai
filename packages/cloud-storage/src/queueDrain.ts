@@ -60,6 +60,9 @@ async function replayOne(
     case 'saveWeekLog':
       await cloud.saveWeekLog(args[0] as WeekLogEntry);
       return;
+    case 'retractWeekLog':
+      await cloud.retractWeekLog(args[0] as WeekLogEntry);
+      return;
     case 'saveWeekNote':
       await cloud.saveWeekNote(args[0] as WeekNote);
       return;

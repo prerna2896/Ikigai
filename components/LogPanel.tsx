@@ -85,6 +85,14 @@ export default function LogPanel({
   const [newDomainPrincipleId, setNewDomainPrincipleId] = useState<
     IkigaiPrincipleId | null
   >(null);
+  // Remembers the exact WeekLogEntry the done-toggle auto-filled for a
+  // task (see handleToggleDone), so un-toggling can retract precisely
+  // that amount instead of guessing. Session-only by design: it's the
+  // "I just clicked it by mistake" undo, not a durable record of which
+  // hours came from where.
+  const [autoFillByTask, setAutoFillByTask] = useState<
+    Record<string, WeekLogEntry>
+  >({});
 
   useEffect(() => {
     setPlan(weekPlan);
@@ -135,10 +143,11 @@ export default function LogPanel({
   // Marking done also logs the remaining hours (planned - already
   // logged) so the hours tracker agrees with the strikethrough instead
   // of showing "Xh left" on a task that visually reads as finished.
-  // Unmarking does NOT retract those hours — hours_logged is additive
-  // across days/sources and there's no reliable way to know which
-  // portion came from the auto-fill vs. a real log, so we only ever
-  // add on the done path, never subtract on the undone path.
+  // Unmarking retracts exactly that auto-filled amount (tracked in
+  // autoFillByTask) so a mistaken tap is a true undo — the row goes
+  // back to exactly where it was before the click. Hours the user
+  // logged manually (via the input or "Save log") are never touched by
+  // either direction; only the toggle's own auto-fill is reversible.
   const handleToggleDone = async (taskId: string) => {
     if (!weekPlanRepo) return;
     const task = tasksForLog.find((t) => t.id === taskId);
@@ -169,36 +178,57 @@ export default function LogPanel({
     const remaining = planned - completed;
     const shouldFillHours =
       isNowDone && weekLogRepo && planned > 0 && remaining > 0;
+    const retractEntry = !isNowDone ? autoFillByTask[taskId] : undefined;
 
     // Optimistic hours bump so the "Xh / Yh · all done" display
     // updates immediately, same instant as the strikethrough.
-    const optimisticLogs = shouldFillHours
-      ? [
-          ...weekLogs,
-          {
-            id: crypto.randomUUID(),
-            weekId: plan.id,
-            dateISO: nowIso,
-            taskHours: { [taskId]: remaining },
-            createdAt: nowIso,
-            updatedAt: nowIso,
-          } satisfies WeekLogEntry,
-        ]
-      : weekLogs;
-    if (shouldFillHours) setWeekLogs(optimisticLogs);
+    const fillEntry: WeekLogEntry | null = shouldFillHours
+      ? {
+          id: crypto.randomUUID(),
+          weekId: plan.id,
+          dateISO: nowIso,
+          taskHours: { [taskId]: remaining },
+          createdAt: nowIso,
+          updatedAt: nowIso,
+        }
+      : null;
+    const optimisticLogs = fillEntry
+      ? [...weekLogs, fillEntry]
+      : retractEntry
+        ? weekLogs.filter((log) => log.id !== retractEntry.id)
+        : weekLogs;
+    if (fillEntry || retractEntry) setWeekLogs(optimisticLogs);
+    if (fillEntry) {
+      setAutoFillByTask((prev) => ({ ...prev, [taskId]: fillEntry }));
+    } else if (retractEntry) {
+      setAutoFillByTask((prev) => {
+        const next = { ...prev };
+        delete next[taskId];
+        return next;
+      });
+    }
 
     try {
       await weekPlanRepo.saveWeekPlan(nextPlan);
-      if (shouldFillHours && weekLogRepo) {
-        await weekLogRepo.saveWeekLog(
-          optimisticLogs[optimisticLogs.length - 1] as WeekLogEntry,
-        );
+      if (fillEntry && weekLogRepo) {
+        await weekLogRepo.saveWeekLog(fillEntry);
+      } else if (retractEntry && weekLogRepo) {
+        await weekLogRepo.retractWeekLog(retractEntry);
       }
     } catch (err) {
       setError(errorMessage(err));
       setPlan(plan);
       onPlanChange?.(plan);
-      if (shouldFillHours) setWeekLogs(weekLogs);
+      if (fillEntry || retractEntry) setWeekLogs(weekLogs);
+      if (fillEntry) {
+        setAutoFillByTask((prev) => {
+          const next = { ...prev };
+          delete next[taskId];
+          return next;
+        });
+      } else if (retractEntry) {
+        setAutoFillByTask((prev) => ({ ...prev, [taskId]: retractEntry }));
+      }
     }
   };
 
@@ -560,7 +590,7 @@ export default function LogPanel({
                 </span>
                 <p
                   className={`min-w-0 flex-1 truncate font-medium ${
-                    task.completedAt ? 'text-mutedText line-through' : ''
+                    isDone ? 'text-mutedText line-through' : ''
                   }`}
                 >
                   {task.title}
@@ -613,9 +643,11 @@ export default function LogPanel({
                     hours tracker agree instead of showing "Xh left"
                     on a task that reads as finished. You can still
                     log partial hours without checking done (progress,
-                    not finished yet); unchecking done does not
-                    retract the hours it added. Persists immediately
-                    via handleToggleDone. */}
+                    not finished yet). Unchecking retracts exactly the
+                    hours this toggle auto-filled — a true undo for a
+                    mistaken tap — but leaves any hours you logged
+                    manually alone. Persists immediately via
+                    handleToggleDone. */}
                 <button
                   type="button"
                   aria-label={

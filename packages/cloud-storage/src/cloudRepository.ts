@@ -704,7 +704,57 @@ export class CloudRepository
       .eq('user_id', userId);
     if (bumpErr) throw bumpErr;
   }
-  
+
+  // Undo of one specific saveWeekLog call — subtracts entry.taskHours
+  // from the matching (task, date) hours_logged rows instead of
+  // deleting them outright, since other saves may have added to the
+  // same row since. Floors at 0 and deletes the row if it reaches it,
+  // so a retract never pushes a total negative or leaves a stray 0 row.
+  async retractWeekLog(entry: WeekLogEntry): Promise<void> {
+    const userId = await currentUserId(this.supabase);
+    const filtered = Object.entries(entry.taskHours).filter(
+      ([, hours]) => Number(hours) > 0,
+    );
+    if (filtered.length === 0) return;
+    const taskIds = filtered.map(([taskId]) => taskId);
+
+    const { data: existing, error: readErr } = await this.supabase
+      .from('hours_logged')
+      .select('id, task_id, hours')
+      .eq('user_id', userId)
+      .eq('date_iso', entry.dateISO)
+      .in('task_id', taskIds);
+    if (readErr) throw readErr;
+
+    const rowByTask = new Map<string, { id: string; hours: number }>();
+    for (const row of existing ?? []) {
+      const tid = row.task_id as string | null;
+      if (!tid) continue;
+      rowByTask.set(tid, { id: row.id as string, hours: Number(row.hours) });
+    }
+
+    await Promise.all(
+      filtered.map(async ([taskId, hoursStr]) => {
+        const row = rowByTask.get(taskId);
+        if (!row) return;
+        const next = row.hours - Number(hoursStr);
+        if (next <= 0) {
+          const { error } = await this.supabase
+            .from('hours_logged')
+            .delete()
+            .eq('id', row.id);
+          if (error) throw error;
+        } else {
+          const { error } = await this.supabase
+            .from('hours_logged')
+            .update({ hours: next })
+            .eq('id', row.id);
+          if (error) throw error;
+        }
+      }),
+    );
+  }
+
   // ─── WeekNote ──────────────────────────────────────────────────────────
 
   async getWeekNote(weekId: string): Promise<WeekNote | null> {
