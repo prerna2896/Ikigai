@@ -647,17 +647,26 @@ export default function LogPanel({
                     hours this toggle auto-filled — a true undo for a
                     mistaken tap — but leaves any hours you logged
                     manually alone. Persists immediately via
-                    handleToggleDone. */}
+                    handleToggleDone.
+
+                    Filled state follows isDone (button OR hours ≥
+                    planned), same as the strikethrough and fill bar,
+                    so a task finished purely by logged hours reads as
+                    checked too instead of looking done everywhere but
+                    here. The click handler still branches on the raw
+                    completedAt flag (see handleToggleDone) — tapping
+                    an hours-only-done task just stamps completedAt
+                    without touching hours (nothing to fill), and
+                    unchecking it clears the stamp without retracting
+                    hours you logged yourself. */}
                 <button
                   type="button"
-                  aria-label={
-                    task.completedAt ? 'Mark as not done' : 'Mark as done'
-                  }
-                  aria-pressed={Boolean(task.completedAt)}
+                  aria-label={isDone ? 'Mark as not done' : 'Mark as done'}
+                  aria-pressed={isDone}
                   data-testid={`log-task-done-${task.id}`}
                   onClick={() => handleToggleDone(task.id)}
                   className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition-colors ${
-                    task.completedAt
+                    isDone
                       ? 'border-accent bg-accent text-white'
                       : 'border-slate-300 bg-white text-transparent hover:border-accent/60'
                   }`}
