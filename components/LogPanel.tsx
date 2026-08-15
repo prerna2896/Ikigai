@@ -475,8 +475,14 @@ export default function LogPanel({
             const completed = Math.round(weekTotals[task.id] || 0);
             const planned = Math.round(task.plannedHours || 0);
             const left = Math.max(0, planned - completed);
-            const isDone = planned > 0 && completed >= planned;
-            const fillPct = planned > 0 ? Math.min(100, Math.round((completed / planned) * 100)) : 0;
+            const markedDone = Boolean(task.completedAt);
+            // The ✓ toggle is a first-class "done" signal independent of
+            // hours logged (a task can be complete without being
+            // time-tracked). Treat toggled-done as full green so the
+            // left bar reads as done at a glance.
+            const isDone = markedDone || (planned > 0 && completed >= planned);
+            const hoursPct = planned > 0 ? Math.min(100, Math.round((completed / planned) * 100)) : 0;
+            const fillPct = markedDone ? 100 : hoursPct;
             return (
               <div
                 key={task.id}
