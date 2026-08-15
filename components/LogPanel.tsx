@@ -145,15 +145,20 @@ export default function LogPanel({
         ),
       })),
     };
-    // Optimistic — the plan re-derivation is cheap and the write is
-    // idempotent, so a rollback on failure just resets the toggle.
+    // Optimistic — bubble to the parent SYNCHRONOUSLY before await so
+    // a mid-flight realtime refetch on cloudVersion doesn't hand us
+    // back a stale weekPlan (without the toggle) and clobber the
+    // optimistic state via the effect on line 89-92 that syncs
+    // `plan` from the `weekPlan` prop. Previously the toggle would
+    // flash on and revert half a second later — that was the race.
     setPlan(nextPlan);
+    onPlanChange?.(nextPlan);
     try {
       await weekPlanRepo.saveWeekPlan(nextPlan);
-      onPlanChange?.(nextPlan);
     } catch (err) {
       setError(errorMessage(err));
       setPlan(plan);
+      onPlanChange?.(plan);
     }
   };
 
@@ -485,9 +490,13 @@ export default function LogPanel({
                       : `linear-gradient(to top, ${isDone ? '#22c55e' : '#fbbf24'} ${fillPct}%, #e2e8f0 ${fillPct}%)`
                   }}
                 />
-                <div className="flex flex-1 items-center gap-3 px-3 py-2">
+                {/* Reduced gap-3 → gap-2 and w-8 icon → w-7 to reclaim
+                    the ~15px the ✓ button needed on mobile without
+                    truncating longer task titles like "Dentist
+                    appointment". Input dropped to w-14 too. */}
+                <div className="flex flex-1 items-center gap-2 px-3 py-2">
                 <span
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-base"
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-sm"
                   title={task.domainName}
                   aria-label={task.domainName}
                 >
@@ -515,8 +524,16 @@ export default function LogPanel({
                       </span>
                     </>
                   ) : (
-                    <span className="text-[11px] text-mutedText">
-                      {completed}h logged
+                    // Unplanned tasks: match the planned-task footprint
+                    // ("Xh / Yh" is ~40px wide) instead of the older
+                    // longer "Xh logged" (~60px) which squeezed the
+                    // title + done button on narrow screens.
+                    <span
+                      className={`text-sm font-semibold ${
+                        completed > 0 ? 'text-accent' : 'text-text'
+                      }`}
+                    >
+                      {completed}h
                     </span>
                   )}
                 </div>
@@ -527,7 +544,7 @@ export default function LogPanel({
                   id={`log-${task.id}`}
                   type="text"
                   inputMode="numeric"
-                  className="w-16 shrink-0 rounded-lg border border-slate-200 px-2 py-1 text-sm text-text"
+                  className="w-14 shrink-0 rounded-lg border border-slate-200 px-2 py-1 text-sm text-text"
                   value={logForm[task.id] ?? ''}
                   onChange={(event) =>
                     handleLogChange(task.id, event.target.value)
