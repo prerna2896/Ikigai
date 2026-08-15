@@ -621,63 +621,73 @@ export class CloudRepository
     const filtered = Object.entries(entry.taskHours).filter(
       ([, hours]) => Number(hours) > 0,
     );
-    if (filtered.length === 0) return;
 
-    const taskIds = filtered.map(([taskId]) => taskId);
+    // Only tasks with positive hours need a hours_logged read/write —
+    // an all-zero save (e.g. end-week "log hours for all tasks,
+    // including zero") has nothing to persist here. But it's still a
+    // real log action from the caller's point of view (LogPanel only
+    // calls saveWeekLog once taskHours has at least one entry — see
+    // handleSaveLog's `Object.keys(taskHours).length === 0` guard), so
+    // it must still count as activity below. Do NOT early-return here;
+    // that previously skipped the activity bump entirely for any save
+    // where every logged task was 0h.
+    if (filtered.length > 0) {
+      const taskIds = filtered.map(([taskId]) => taskId);
 
-    // Fetch prior hours for these tasks on this date.
-    const { data: existing, error: readErr } = await this.supabase
-      .from('hours_logged')
-      .select('id, task_id, hours')
-      .eq('user_id', userId)
-      .eq('date_iso', entry.dateISO)
-      .in('task_id', taskIds);
-    if (readErr) throw readErr;
+      // Fetch prior hours for these tasks on this date.
+      const { data: existing, error: readErr } = await this.supabase
+        .from('hours_logged')
+        .select('id, task_id, hours')
+        .eq('user_id', userId)
+        .eq('date_iso', entry.dateISO)
+        .in('task_id', taskIds);
+      if (readErr) throw readErr;
 
-    const priorByTask = new Map<string, { id: string; hours: number }>();
-    for (const row of existing ?? []) {
-      const tid = row.task_id as string | null;
-      if (!tid) continue;
-      priorByTask.set(tid, {
-        id: row.id as string,
-        hours: Number(row.hours),
-      });
-    }
-
-    // Split into UPDATEs (task already has a row today) and INSERTs
-    // (first log for this task today). Both use Promise.all so a
-    // batch save of N tasks costs 1 read + max(N updates, 1 insert
-    // batch) round-trips.
-    const updates: Array<() => Promise<void>> = [];
-    const inserts: Array<Record<string, unknown>> = [];
-    for (const [taskId, hoursStr] of filtered) {
-      const hours = Number(hoursStr);
-      const prior = priorByTask.get(taskId);
-      if (prior) {
-        updates.push(async () => {
-          const { error } = await this.supabase
-            .from('hours_logged')
-            .update({ hours: prior.hours + hours })
-            .eq('id', prior.id);
-          if (error) throw error;
-        });
-      } else {
-        inserts.push({
-          id: crypto.randomUUID(),
-          user_id: userId,
-          task_id: taskId,
-          week_plan_id: entry.weekId,
-          date_iso: entry.dateISO,
-          hours,
+      const priorByTask = new Map<string, { id: string; hours: number }>();
+      for (const row of existing ?? []) {
+        const tid = row.task_id as string | null;
+        if (!tid) continue;
+        priorByTask.set(tid, {
+          id: row.id as string,
+          hours: Number(row.hours),
         });
       }
-    }
-    await Promise.all(updates.map((run) => run()));
-    if (inserts.length > 0) {
-      const { error: insErr } = await this.supabase
-        .from('hours_logged')
-        .insert(inserts);
-      if (insErr) throw insErr;
+
+      // Split into UPDATEs (task already has a row today) and INSERTs
+      // (first log for this task today). Both use Promise.all so a
+      // batch save of N tasks costs 1 read + max(N updates, 1 insert
+      // batch) round-trips.
+      const updates: Array<() => Promise<void>> = [];
+      const inserts: Array<Record<string, unknown>> = [];
+      for (const [taskId, hoursStr] of filtered) {
+        const hours = Number(hoursStr);
+        const prior = priorByTask.get(taskId);
+        if (prior) {
+          updates.push(async () => {
+            const { error } = await this.supabase
+              .from('hours_logged')
+              .update({ hours: prior.hours + hours })
+              .eq('id', prior.id);
+            if (error) throw error;
+          });
+        } else {
+          inserts.push({
+            id: crypto.randomUUID(),
+            user_id: userId,
+            task_id: taskId,
+            week_plan_id: entry.weekId,
+            date_iso: entry.dateISO,
+            hours,
+          });
+        }
+      }
+      await Promise.all(updates.map((run) => run()));
+      if (inserts.length > 0) {
+        const { error: insErr } = await this.supabase
+          .from('hours_logged')
+          .insert(inserts);
+        if (insErr) throw insErr;
+      }
     }
 
     // Bump profiles.last_activity_at so the home-page greeting
@@ -685,14 +695,16 @@ export class CloudRepository
     // repo does this in bumpProfileActivity — cloud didn't, so
     // signed-in users saw a stale greeting no matter how often they
     // logged. Awaited: PostgrestBuilder only fires on .then(), so
-    // `void builder` would silently drop the request.
+    // `void builder` would silently drop the request. Runs
+    // unconditionally (not just when filtered.length > 0) so an
+    // all-zero end-week log still counts as activity.
     const { error: bumpErr } = await this.supabase
       .from('profiles')
       .update({ last_activity_at: new Date().toISOString() })
       .eq('user_id', userId);
     if (bumpErr) throw bumpErr;
   }
-
+  
   // ─── WeekNote ──────────────────────────────────────────────────────────
 
   async getWeekNote(weekId: string): Promise<WeekNote | null> {
