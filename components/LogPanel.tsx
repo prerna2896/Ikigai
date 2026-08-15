@@ -85,6 +85,14 @@ export default function LogPanel({
   const [newDomainPrincipleId, setNewDomainPrincipleId] = useState<
     IkigaiPrincipleId | null
   >(null);
+  // Remembers the exact WeekLogEntry the done-toggle auto-filled for a
+  // task (see handleToggleDone), so un-toggling can retract precisely
+  // that amount instead of guessing. Session-only by design: it's the
+  // "I just clicked it by mistake" undo, not a durable record of which
+  // hours came from where.
+  const [autoFillByTask, setAutoFillByTask] = useState<
+    Record<string, WeekLogEntry>
+  >({});
 
   useEffect(() => {
     setPlan(weekPlan);
@@ -131,17 +139,28 @@ export default function LogPanel({
   // Deliberately NOT batched with the Save-log flow — the checkbox is
   // a discrete affordance and users expect immediate persistence, same
   // as the WeekGoals done toggle.
+  //
+  // Marking done also logs the remaining hours (planned - already
+  // logged) so the hours tracker agrees with the strikethrough instead
+  // of showing "Xh left" on a task that visually reads as finished.
+  // Unmarking retracts exactly that auto-filled amount (tracked in
+  // autoFillByTask) so a mistaken tap is a true undo — the row goes
+  // back to exactly where it was before the click. Hours the user
+  // logged manually (via the input or "Save log") are never touched by
+  // either direction; only the toggle's own auto-fill is reversible.
   const handleToggleDone = async (taskId: string) => {
     if (!weekPlanRepo) return;
+    const task = tasksForLog.find((t) => t.id === taskId);
+    const isNowDone = !task?.completedAt;
     const nowIso = new Date().toISOString();
     const nextPlan: WeekPlan = {
       ...plan,
       domains: plan.domains.map((domain) => ({
         ...domain,
-        tasks: domain.tasks.map((task) =>
-          task.id === taskId
-            ? { ...task, completedAt: task.completedAt ? null : nowIso }
-            : task,
+        tasks: domain.tasks.map((t) =>
+          t.id === taskId
+            ? { ...t, completedAt: t.completedAt ? null : nowIso }
+            : t,
         ),
       })),
     };
@@ -153,12 +172,63 @@ export default function LogPanel({
     // flash on and revert half a second later — that was the race.
     setPlan(nextPlan);
     onPlanChange?.(nextPlan);
+
+    const planned = Math.round(task?.plannedHours || 0);
+    const completed = Math.round(weekTotals[taskId] || 0);
+    const remaining = planned - completed;
+    const shouldFillHours =
+      isNowDone && weekLogRepo && planned > 0 && remaining > 0;
+    const retractEntry = !isNowDone ? autoFillByTask[taskId] : undefined;
+
+    // Optimistic hours bump so the "Xh / Yh · all done" display
+    // updates immediately, same instant as the strikethrough.
+    const fillEntry: WeekLogEntry | null = shouldFillHours
+      ? {
+          id: crypto.randomUUID(),
+          weekId: plan.id,
+          dateISO: nowIso,
+          taskHours: { [taskId]: remaining },
+          createdAt: nowIso,
+          updatedAt: nowIso,
+        }
+      : null;
+    const optimisticLogs = fillEntry
+      ? [...weekLogs, fillEntry]
+      : retractEntry
+        ? weekLogs.filter((log) => log.id !== retractEntry.id)
+        : weekLogs;
+    if (fillEntry || retractEntry) setWeekLogs(optimisticLogs);
+    if (fillEntry) {
+      setAutoFillByTask((prev) => ({ ...prev, [taskId]: fillEntry }));
+    } else if (retractEntry) {
+      setAutoFillByTask((prev) => {
+        const next = { ...prev };
+        delete next[taskId];
+        return next;
+      });
+    }
+
     try {
       await weekPlanRepo.saveWeekPlan(nextPlan);
+      if (fillEntry && weekLogRepo) {
+        await weekLogRepo.saveWeekLog(fillEntry);
+      } else if (retractEntry && weekLogRepo) {
+        await weekLogRepo.retractWeekLog(retractEntry);
+      }
     } catch (err) {
       setError(errorMessage(err));
       setPlan(plan);
       onPlanChange?.(plan);
+      if (fillEntry || retractEntry) setWeekLogs(weekLogs);
+      if (fillEntry) {
+        setAutoFillByTask((prev) => {
+          const next = { ...prev };
+          delete next[taskId];
+          return next;
+        });
+      } else if (retractEntry) {
+        setAutoFillByTask((prev) => ({ ...prev, [taskId]: retractEntry }));
+      }
     }
   };
 
@@ -475,8 +545,14 @@ export default function LogPanel({
             const completed = Math.round(weekTotals[task.id] || 0);
             const planned = Math.round(task.plannedHours || 0);
             const left = Math.max(0, planned - completed);
-            const isDone = planned > 0 && completed >= planned;
-            const fillPct = planned > 0 ? Math.min(100, Math.round((completed / planned) * 100)) : 0;
+            const markedDone = Boolean(task.completedAt);
+            // The ✓ toggle is a first-class "done" signal independent of
+            // hours logged (a task can be complete without being
+            // time-tracked). Treat toggled-done as full green so the
+            // left bar reads as done at a glance.
+            const isDone = markedDone || (planned > 0 && completed >= planned);
+            const hoursPct = planned > 0 ? Math.min(100, Math.round((completed / planned) * 100)) : 0;
+            const fillPct = markedDone ? 100 : hoursPct;
             return (
               <div
                 key={task.id}
@@ -493,8 +569,18 @@ export default function LogPanel({
                 {/* Reduced gap-3 → gap-2 and w-8 icon → w-7 to reclaim
                     the ~15px the ✓ button needed on mobile without
                     truncating longer task titles like "Dentist
-                    appointment". Input dropped to w-14 too. */}
-                <div className="flex flex-1 items-center gap-2 px-3 py-2">
+                    appointment". Input dropped to w-14 too.
+                    min-w-0 here (not just on the <p> below) matters:
+                    this div is itself a flex item of the outer row,
+                    and its default automatic min-width is the
+                    max-content size of its contents. For a title
+                    with no spaces to break on (e.g. a slug-style
+                    name), that max-content size is the ENTIRE
+                    string — so without min-w-0 here, this wrapper
+                    refuses to shrink and the row overflows past the
+                    outer overflow-hidden instead of the <p>'s own
+                    truncate kicking in. */}
+                <div className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2">
                 <span
                   className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-sm"
                   title={task.domainName}
@@ -504,7 +590,7 @@ export default function LogPanel({
                 </span>
                 <p
                   className={`min-w-0 flex-1 truncate font-medium ${
-                    task.completedAt ? 'text-mutedText line-through' : ''
+                    isDone ? 'text-mutedText line-through' : ''
                   }`}
                 >
                   {task.title}
@@ -551,11 +637,17 @@ export default function LogPanel({
                   }
                   placeholder="+0"
                 />
-                {/* Mark task done in one tap — independent of hours logged.
-                    A user can check this without entering any hours (e.g.
-                    task complete but not time-tracked) or entering hours
-                    but not checking (e.g. logged some progress, not done
-                    yet). Persists immediately via handleToggleDone. */}
+                {/* Mark task done in one tap. Checking it auto-fills any
+                    remaining hours up to the planned amount (see
+                    handleToggleDone), so the strikethrough and the
+                    hours tracker agree instead of showing "Xh left"
+                    on a task that reads as finished. You can still
+                    log partial hours without checking done (progress,
+                    not finished yet). Unchecking retracts exactly the
+                    hours this toggle auto-filled — a true undo for a
+                    mistaken tap — but leaves any hours you logged
+                    manually alone. Persists immediately via
+                    handleToggleDone. */}
                 <button
                   type="button"
                   aria-label={

@@ -383,6 +383,12 @@ export class LocalRepository
     await this.bumpProfileActivity(validated.updatedAt ?? validated.dateISO);
   }
 
+  // Local appends one row per saveWeekLog call and sums across rows on
+  // read, so undoing a specific save is just deleting the row it wrote.
+  async retractWeekLog(entry: WeekLogEntry): Promise<void> {
+    await this.db.weekLogs.delete(entry.id);
+  }
+
   private async bumpProfileActivity(timestamp: string): Promise<void> {
     const existing = await this.db.profiles.toCollection().first();
     if (!existing) return;

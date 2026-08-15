@@ -151,4 +151,55 @@ test.describe('saveWeekLog → profiles.last_activity_at bumped', () => {
     // ~3 months from now).
     expect(Math.abs(now - after)).toBeLessThan(5_000);
   });
+
+  test('logging all-zero hours still advances last_activity_at', async () => {
+    // Regression for a gap in the first fix: saveWeekLog filters
+    // taskHours down to entries with hours > 0 before doing any
+    // hours_logged writes, and used to `return` early when that
+    // filtered set was empty — which happens on a legitimate
+    // end-week save where every task is logged as 0h (see README:
+    // "End-week: log hours for all tasks, including zero"). The
+    // early return skipped the activity bump below it too, so a
+    // signed-in user whose habit includes 0h days never got credit
+    // for showing up. The bump must run whenever saveWeekLog is
+    // called with a non-empty taskHours, regardless of whether any
+    // individual value is positive.
+    const supabase = await clientAsUser(email);
+    const repo = new CloudRepository(supabase);
+
+    const staleIso = '2026-08-11T00:00:00.000Z';
+    await admin
+      .from('profiles')
+      .update({ last_activity_at: staleIso })
+      .eq('user_id', userId);
+
+    const beforeRow = await admin
+      .from('profiles')
+      .select('last_activity_at')
+      .eq('user_id', userId)
+      .single();
+    expect(beforeRow.data?.last_activity_at as string).toContain(
+      '2026-08-11',
+    );
+
+    await repo.saveWeekLog({
+      id: 'ignored',
+      weekId: planId,
+      dateISO: '2026-11-18',
+      taskHours: { [taskId]: 0 },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    const afterRow = await admin
+      .from('profiles')
+      .select('last_activity_at')
+      .eq('user_id', userId)
+      .single();
+    const after = new Date(
+      afterRow.data?.last_activity_at as string,
+    ).getTime();
+    const now = Date.now();
+    expect(Math.abs(now - after)).toBeLessThan(5_000);
+  });
 });

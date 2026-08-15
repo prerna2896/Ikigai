@@ -330,6 +330,15 @@ export class OfflineAwareCloudRepository
     );
   }
 
+  async retractWeekLog(entry: WeekLogEntry): Promise<void> {
+    await this.runOrQueue(
+      'retractWeekLog',
+      [entry],
+      () => this.cloud.retractWeekLog(entry),
+      () => this.local.retractWeekLog(entry),
+    );
+  }
+
   async saveWeekNote(note: WeekNote): Promise<void> {
     await this.runOrQueue(
       'saveWeekNote',

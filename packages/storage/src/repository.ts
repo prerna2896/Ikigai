@@ -34,6 +34,14 @@ export interface WeekPlanRepository {
 export interface WeekLogRepository {
   getWeekLogs(weekId: string): Promise<WeekLogEntry[]>;
   saveWeekLog(entry: WeekLogEntry): Promise<void>;
+  // Undo of a *specific previously-saved* entry (same shape passed to
+  // saveWeekLog) — subtracts entry.taskHours from that date rather than
+  // deleting anything the entry doesn't own. Only safe to call with an
+  // entry the caller knows was actually saved verbatim (e.g. an
+  // auto-fill it just made), since hours are additive and there's no
+  // way to distinguish "this task's hours" from "hours added by this
+  // particular save" once other saves land on top of it.
+  retractWeekLog(entry: WeekLogEntry): Promise<void>;
 }
 
 export interface WeekNoteRepository {
