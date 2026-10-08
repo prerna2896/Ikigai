@@ -110,6 +110,27 @@ Shipped as a **phase 1**: minimal Realtime layer that gives cross-device live sy
 - [ ] Branded email template — see [specs/email-template.md](./specs/email-template.md).
 - [ ] Ikigai `docs/README.md`, `docs/PLAN.md`, `docs/TASKS.md` created (this file). Per workspace `CLAUDE.md` convention. Done as part of M2.1.
 
+## AI Insights (Kenji's one-liner) — shipped, live-iterating
+
+Spec + full shipped/in-flight checklist: [specs/ai-insights.md](./specs/ai-insights.md). Not gated on or gating M2/M3/M4. Current in-flight items (kept in sync with the spec doc, don't duplicate detail here):
+
+- [x] Chronic / sustained-underdelivery signal (multi-week pattern, not just week-over-week).
+- [x] Personality-driven motivating insight for the no-plan/no-log state on `/insights`, with the existing "Go to Plan" CTA.
+- [x] Week-shape classification: ambiguous overall-decline signal (totals-based, cause left unguessed) + generalized multi-domain reallocation signal + per-domain multi-week trend dropdown.
+- [ ] Decide whether/how reflection *content* (not just count) should ever inform insights — see spec's Open questions.
+
+## Kenji companion (not started, independent of the M2 sync track)
+
+Spec: [specs/ai-companion.md](./specs/ai-companion.md). Extends the existing `/insights` one-liner into an ongoing signed-in-only conversation. Not gated on or gating M2/M3/M4.
+
+- [ ] `companion_messages` table + RLS migration (mirrors existing user-scoped table pattern).
+- [ ] `/api/companion/message` route — new, stateful, deliberately separate from the zero-DB `/api/insights/weekly`.
+- [ ] Deterministic severe-distress pre-check + fixed crisis-resource response (server-side, before any model call).
+- [ ] Crisis-response copy + pattern list reviewed by a mental-health-literate reviewer before any real-user exposure, including internal testing.
+- [ ] One-time disclosure UI (AI, not a person, not a therapist).
+- [ ] Conversation UI (reuses `ModernMonk`), reachable from `/insights`.
+- [ ] Extend `coachingStyles.ts` with conversational-mode tone lines (active-listening reflection, continuity).
+
 ## M3 — Analytical query performance (not started)
 
 ## M4 — Local-to-cloud migration ✅

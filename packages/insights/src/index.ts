@@ -1,3 +1,10 @@
-export interface InsightsEngine {
-  getWeeklyTrendSummary(): Promise<string | null>;
-}
+export * from './traits';
+export * from './coachingStyles';
+export * from './personas';
+export * from './signals';
+export * from './summary';
+export * from './buildWeeklySummary';
+export * from './prompt';
+export * from './fixtures';
+export * from './reflectionInsights';
+export * from './sampleData';

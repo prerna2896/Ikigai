@@ -35,6 +35,35 @@ export const findPlanForWeekStart = (
 ): WeekPlan | null =>
   plans.find((p) => p.weekStartISO === weekStartISO) ?? null;
 
+export const priorWeekStartISO = (weekStartISO: string): string => {
+  const start = new Date(`${weekStartISO}T00:00:00`);
+  start.setDate(start.getDate() - 7);
+  return formatLocalISODate(start);
+};
+
+// Walks backward one week at a time from (but not including) fromWeekStartISO,
+// returning up to `count` plans, most-recent-first. Stops early (returns
+// fewer than `count`) if a week has no plan — a gap means there's no
+// continuous history to look at past that point, not a week to skip
+// over. Used for multi-week pattern checks (see
+// computeWeeklySignals' sustained_underdelivery) that need more than
+// just the single immediately-prior week.
+export const findPriorPlans = (
+  sortedPlans: WeekPlan[],
+  fromWeekStartISO: string,
+  count: number,
+): WeekPlan[] => {
+  const result: WeekPlan[] = [];
+  let cursor = fromWeekStartISO;
+  for (let i = 0; i < count; i += 1) {
+    cursor = priorWeekStartISO(cursor);
+    const plan = findPlanForWeekStart(sortedPlans, cursor);
+    if (!plan) break;
+    result.push(plan);
+  }
+  return result;
+};
+
 export type CurrentWeekStatus =
   | { kind: 'unplanned'; currentWeekStartISO: string }
   | { kind: 'planned'; currentWeekStartISO: string; plan: WeekPlan };

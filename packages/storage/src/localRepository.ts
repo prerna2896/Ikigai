@@ -29,7 +29,16 @@ import type {
 
 const isDev = process.env.NODE_ENV !== 'production';
 
-const parseOrThrow = <T>(schema: z.ZodType<T>, data: unknown, context: string): T => {
+// S extends ZodTypeAny + z.output<S> (rather than a free `<T>` bound via
+// z.ZodType<T>) so schemas using .default()/.transform() infer their
+// actual parsed output type — a plain `z.ZodType<T>` parameter only pins
+// the Output generic position, and TS's inference can still pick up the
+// (different, optional-for-.default() fields) Input position instead.
+const parseOrThrow = <S extends z.ZodTypeAny>(
+  schema: S,
+  data: unknown,
+  context: string,
+): z.output<S> => {
   const result = schema.safeParse(data);
   if (result.success) {
     return result.data;
@@ -201,6 +210,10 @@ export class LocalRepository
             'classHoursPerWeek' in (existing as Settings)
               ? Number((existing as Settings).classHoursPerWeek)
               : 0,
+          aiInsightsEnabled:
+            'aiInsightsEnabled' in (existing as Settings)
+              ? Boolean((existing as Settings).aiInsightsEnabled)
+              : false,
           updatedAt: nowIso,
         };
         const validated = parseOrThrow(settingsSchema, repaired, 'Settings repair');

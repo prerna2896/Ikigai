@@ -245,6 +245,8 @@ export class CloudRepository
       strictness: data.strictness,
       checkInFrequency: data.check_in_frequency ?? undefined,
       planningFrequency: data.planning_frequency ?? undefined,
+      aiInsightsEnabled: Boolean(data.ai_insights_enabled),
+      companionDisclosureAcknowledgedAt: data.companion_disclosure_acknowledged_at ?? null,
       createdAt: data.created_at,
       updatedAt: data.updated_at,
     };
@@ -277,6 +279,8 @@ export class CloudRepository
         strictness: settings.strictness,
         check_in_frequency: settings.checkInFrequency ?? null,
         planning_frequency: settings.planningFrequency ?? null,
+        ai_insights_enabled: settings.aiInsightsEnabled,
+        companion_disclosure_acknowledged_at: settings.companionDisclosureAcknowledgedAt ?? null,
         created_at: settings.createdAt || now,
         updated_at: now,
       },

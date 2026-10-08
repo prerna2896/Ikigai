@@ -56,6 +56,8 @@ export const settingsSchema = z.object({
     'very_structured',
     'no_buffer',
   ]),
+  aiInsightsEnabled: z.boolean().default(false),
+  companionDisclosureAcknowledgedAt: isoDateString.nullable().optional(),
   createdAt: isoDateString,
   updatedAt: isoDateString,
 });

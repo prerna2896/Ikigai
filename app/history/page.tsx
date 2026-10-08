@@ -13,6 +13,7 @@ import { suggestPrincipleForName, type IkigaiPrincipleId } from '@ikigai/core';
 import { getWeekEndISO, withDerivedPlannedHours } from '../week/plan/planUtils';
 import { useRepository } from '../../components/RepositoryProvider';
 import { useCloudSyncVersion } from '../../components/CloudSyncProvider';
+import { formatLocalISODate } from '../../lib/weekPosition';
 import {
   decodeReflectionNote,
   type ParsedReflectionNote,
@@ -210,6 +211,7 @@ export default function HistoryPage() {
     if (!weekPlans.length) {
       return [];
     }
+    const todayISO = formatLocalISODate(new Date());
     return weekPlans
       .slice()
       .sort((a, b) => (a.weekStartISO < b.weekStartISO ? 1 : -1))
@@ -256,8 +258,16 @@ export default function HistoryPage() {
           adherence:
             plannedTotal > 0 ? cappedCompletedTotal / plannedTotal : 0,
           domainTotals,
+          weekEndISO: plan.weekEndISO,
+          isComplete: plan.weekEndISO < todayISO,
         };
-      });
+      })
+      // A week that hasn't ended yet and has no logged hours is just
+      // "hasn't happened," not a real 0% — showing it reads as a
+      // misleading cliff-drop in the trend chart and stats. Once it
+      // either has real logged hours or has fully ended, it's a
+      // legitimate data point (including a genuine 0% miss).
+      .filter((summary) => summary.completedTotal > 0 || summary.isComplete);
   }, [weekPlans, weekLogsByWeek, timeZone]);
 
   useEffect(() => {
@@ -452,6 +462,19 @@ export default function HistoryPage() {
       current.adherence < worst.adherence ? current : worst,
     );
   }, [historySummaries]);
+
+  // A "miss" is a week that actually finished (not one still in
+  // progress) and came in well under plan — distinct from the trend
+  // chart/adherence list above, which already exclude not-yet-ended
+  // weeks entirely. historySummaries is sorted newest-first already.
+  const MISS_THRESHOLD = 0.5;
+  const weeklyMisses = useMemo(
+    () =>
+      historySummaries.filter(
+        (summary) => summary.isComplete && summary.adherence < MISS_THRESHOLD,
+      ),
+    [historySummaries],
+  );
 
   const mostSteadyDomain = useMemo(() => {
     if (!domainInsights.length) {
@@ -923,6 +946,50 @@ export default function HistoryPage() {
               </div>
             ) : null}
           </div>
+        </div>
+      </section>
+
+      <section
+        className="rounded-2xl border border-slate-200 bg-surface p-4 sm:p-6 shadow-sm"
+        data-testid="weekly-misses"
+      >
+        <h2 className="text-sm font-semibold text-text">Weekly misses</h2>
+        <p className="mt-1 text-xs text-mutedText">
+          Completed weeks where you landed under {Math.round(MISS_THRESHOLD * 100)}% of plan.
+        </p>
+        <div className="mt-4 space-y-2">
+          {weeklyMisses.length === 0 ? (
+            <p className="text-xs text-mutedText">
+              No weeks below {Math.round(MISS_THRESHOLD * 100)}% completion yet.
+            </p>
+          ) : (
+            weeklyMisses.map((summary) => {
+              const isSelected = selectedSummary?.weekId === summary.weekId;
+              return (
+                <button
+                  key={summary.weekId}
+                  type="button"
+                  data-testid="weekly-miss-row"
+                  className={`flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-xs ${
+                    isSelected
+                      ? 'border-accent bg-accentSoft text-text'
+                      : 'border-rose-100 bg-rose-50/60 text-mutedText hover:bg-rose-50'
+                  }`}
+                  onClick={() => setSelectedHistoryWeekId(summary.weekId)}
+                >
+                  <span className="font-medium text-text">{summary.rangeLabel}</span>
+                  <span className="flex items-center gap-2">
+                    <span>
+                      {Math.round(summary.completedTotal)}h / {Math.round(summary.plannedTotal)}h
+                    </span>
+                    <span className="rounded-full bg-rose-100 px-2 py-0.5 font-medium text-rose-700">
+                      {Math.round(summary.adherence * 100)}%
+                    </span>
+                  </span>
+                </button>
+              );
+            })
+          )}
         </div>
       </section>
 

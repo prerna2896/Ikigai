@@ -109,6 +109,21 @@ export const reflectionCategoryLabel = (
   }
 };
 
+// Most recent "what got in the way" note for a given week, if any —
+// used to give the AI Insights prompt real context (e.g. "traveling")
+// instead of just re-flagging a drop the person already explained.
+export const latestHinderedNoteText = (
+  notes: WeekNote[],
+  weekId: string,
+): string | null => {
+  const candidates = notes
+    .filter((n) => n.weekId === weekId)
+    .map(decodeReflectionNote)
+    .filter((n) => n.categoryId === 'hindered' && n.text.trim().length > 0)
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  return candidates[0]?.text.trim() ?? null;
+};
+
 export const formatReflectionTimestamp = (iso: string): string => {
   try {
     const date = new Date(iso);

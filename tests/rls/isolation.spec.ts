@@ -233,6 +233,113 @@ test.describe('RLS isolation between two authenticated users', () => {
       .eq('id', id);
     expect(after?.length).toBe(1);
   });
+
+  // ─── Kenji companion tables (added alongside the companion feature) ────
+  test('user A can insert and read their own companion_messages row', async () => {
+    const clientA = clientFor(userAJwt);
+    const id = randomUUID();
+    const conversationId = randomUUID();
+    const { error } = await clientA.from('companion_messages').insert({
+      id,
+      user_id: userAId,
+      conversation_id: conversationId,
+      role: 'user',
+      content: 'hello kenji',
+    });
+    expect(error).toBeNull();
+
+    const { data, error: readErr } = await clientA
+      .from('companion_messages')
+      .select('id,user_id,content')
+      .eq('id', id)
+      .single();
+    expect(readErr).toBeNull();
+    expect(data?.id).toBe(id);
+    expect(data?.user_id).toBe(userAId);
+  });
+
+  test("user B cannot see user A's companion_messages rows", async () => {
+    const clientA = clientFor(userAJwt);
+    const clientB = clientFor(userBJwt);
+    const id = randomUUID();
+    await clientA.from('companion_messages').insert({
+      id,
+      user_id: userAId,
+      conversation_id: randomUUID(),
+      role: 'user',
+      content: 'a private message',
+    });
+
+    const { data, error } = await clientB
+      .from('companion_messages')
+      .select('id')
+      .eq('id', id);
+    expect(error).toBeNull();
+    expect(data).toEqual([]);
+
+    const { data: listData } = await clientB.from('companion_messages').select('user_id');
+    for (const row of listData ?? []) {
+      expect(row.user_id).toBe(userBId);
+    }
+  });
+
+  test('user B cannot INSERT a companion_messages row claiming user A ownership', async () => {
+    const clientB = clientFor(userBJwt);
+    const { error } = await clientB.from('companion_messages').insert({
+      id: randomUUID(),
+      user_id: userAId, // <- lying about ownership
+      conversation_id: randomUUID(),
+      role: 'user',
+      content: 'pretending to be A',
+    });
+    expect(error).not.toBeNull();
+    expect(error?.code).toBe('42501');
+  });
+
+  test('user A can upsert and read their own companion_context row', async () => {
+    const clientA = clientFor(userAJwt);
+    const { error } = await clientA
+      .from('companion_context')
+      .upsert({ user_id: userAId, persona_summary: 'likes mornings' }, { onConflict: 'user_id' });
+    expect(error).toBeNull();
+
+    const { data, error: readErr } = await clientA
+      .from('companion_context')
+      .select('user_id,persona_summary')
+      .eq('user_id', userAId)
+      .single();
+    expect(readErr).toBeNull();
+    expect(data?.persona_summary).toBe('likes mornings');
+  });
+
+  test("user B cannot see or overwrite user A's companion_context row", async () => {
+    const clientA = clientFor(userAJwt);
+    const clientB = clientFor(userBJwt);
+    await clientA
+      .from('companion_context')
+      .upsert({ user_id: userAId, persona_summary: 'A-only summary' }, { onConflict: 'user_id' });
+
+    const { data, error } = await clientB
+      .from('companion_context')
+      .select('user_id')
+      .eq('user_id', userAId);
+    expect(error).toBeNull();
+    expect(data).toEqual([]);
+
+    // B claiming A's user_id on upsert should be rejected by WITH CHECK,
+    // not silently overwrite A's row.
+    const { error: claimErr } = await clientB
+      .from('companion_context')
+      .upsert({ user_id: userAId, persona_summary: 'hijacked' }, { onConflict: 'user_id' });
+    expect(claimErr).not.toBeNull();
+
+    const { data: after } = await clientA
+      .from('companion_context')
+      .select('persona_summary')
+      .eq('user_id', userAId)
+      .single();
+    expect(after?.persona_summary).toBe('A-only summary');
+  });
 });
 
 test.describe('Auth boundary probes', () => {

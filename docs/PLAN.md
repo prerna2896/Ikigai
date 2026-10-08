@@ -69,6 +69,10 @@ Seed synthetic corpus (10k users × 52 weeks × 7 domains × 5 tasks × 7 daily 
 
 Idempotent per-user server endpoint that lifts an existing Dexie payload into Supabase using the same UUIDs. Playwright suite covers fresh user, happy path, idempotency, partial-failure recovery, cross-device collision, malformed data.
 
+## Related, independent initiatives
+
+- **Kenji companion** — extends the existing AI Insights one-liner (`/insights`, `packages/insights`) into an ongoing signed-in conversation. Not part of the cloud-migration track above and not gated by it (it depends on the CloudRepository/RLS pattern M2 already established, but doesn't block or get blocked by M2/M3/M4). See [specs/ai-companion.md](./specs/ai-companion.md).
+
 ## Follow-up mini-milestones (out-of-band, not gating any main milestone)
 
 - **Google OAuth**: requires Google Cloud Console setup. See future `docs/specs/oauth-google.md`.
