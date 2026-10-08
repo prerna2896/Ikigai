@@ -173,6 +173,7 @@ function OnboardingSettingsContent() {
       classHoursPerWeek: isStudentSelection ? classHoursPerWeek : 0,
       sleepHoursPerDay,
       maintenanceHoursPerDay,
+      aiInsightsEnabled: false,
       createdAt: nowIso,
       updatedAt: nowIso,
     };

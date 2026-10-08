@@ -1419,19 +1419,20 @@ export default function WeekPlanPage() {
                 {taskList.map(({ task, domain }) => (
                   <div
                     key={task.id}
-                    className="relative flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2"
+                    className="relative rounded-xl border border-slate-200 bg-white px-3 py-2"
                     data-testid="task-row"
                     data-task-id={task.id}
                   >
+                  <div className="flex items-center gap-2">
                     <span
-                      className="flex h-7 w-7 items-center justify-center text-base leading-none"
+                      className="flex h-7 w-7 shrink-0 items-center justify-center text-base leading-none"
                       aria-hidden="true"
                     >
                       {getDomainIcon(domain.name)}
                     </span>
                     <input
                       type="text"
-                      className="min-w-[180px] flex-1 text-sm text-text outline-none"
+                      className="min-w-0 flex-1 text-sm text-text outline-none"
                       value={task.title}
                       onChange={(event) =>
                         handleTaskFieldChange(domain.id, task.id, {
@@ -1451,7 +1452,7 @@ export default function WeekPlanPage() {
                     <input
                       type="text"
                       inputMode="numeric"
-                      className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-sm text-text"
+                      className="w-14 shrink-0 rounded-lg border border-slate-200 px-2 py-1 text-sm text-text"
                       value={String(task.plannedHours)}
                       onChange={(event) =>
                         handleTaskFieldChange(domain.id, task.id, {
@@ -1478,6 +1479,8 @@ export default function WeekPlanPage() {
                       aria-label={PLAN_COPY.hoursAria}
                       data-testid="task-row-hours"
                     />
+                  </div>
+                  <div className="mt-1.5 flex items-center gap-2 pl-9">
                     <div className={`relative ${domainPickerTaskId === task.id ? 'z-10' : ''}`}>
                       <button
                         type="button"
@@ -1593,6 +1596,7 @@ export default function WeekPlanPage() {
                     >
                       Remove
                     </button>
+                  </div>
                   </div>
                 ))}
               </div>

@@ -58,6 +58,8 @@ const USER_SCOPED_TABLES = [
   'hours_logged',
   'week_notes',
   'pending_mutations',
+  'companion_messages',
+  'companion_context',
 ] as const;
 
 test.afterAll(async () => {
@@ -180,9 +182,12 @@ test.describe('schema integrity — every migration produced the shape schema.ts
 
     const found = new Set(rows.map((r) => r.table_name));
     // pending_mutations is a server-side sync log and doesn't need
-    // Realtime — clients don't subscribe to it.
+    // Realtime — clients don't subscribe to it. The two companion
+    // tables are excluded for the same reason as of v1: the companion
+    // page reads history with a one-shot query on load, not a live
+    // Realtime subscription — add them back here if/when that changes.
     const expected = USER_SCOPED_TABLES.filter(
-      (t) => t !== 'pending_mutations',
+      (t) => t !== 'pending_mutations' && t !== 'companion_messages' && t !== 'companion_context',
     );
     const missing = expected.filter((t) => !found.has(t));
     expect(
@@ -251,6 +256,20 @@ test.describe('schema integrity — every migration produced the shape schema.ts
         'op',
         'payload',
       ],
+      companion_messages: [
+        'id',
+        'user_id',
+        'conversation_id',
+        'role',
+        'content',
+        'crisis_flag',
+      ],
+      companion_context: [
+        'user_id',
+        'persona_summary',
+        'recent_interaction_summary',
+        'recent_interaction_conversation_id',
+      ],
     };
 
     for (const [tableName, expectedCols] of Object.entries(required)) {
@@ -286,10 +305,17 @@ test.describe('schema integrity — every migration produced the shape schema.ts
       GROUP BY c.relname
     `) as unknown as Array<{ table_name: string }>;
 
+    // Deliberately NOT RLS-scoped: insight_reactions has a best-effort,
+    // nullable user_id but no client read path and no RLS policies at
+    // all — only the service-role key (which bypasses RLS) ever
+    // touches it. See supabase/migrations/0006_insight_reactions.sql's
+    // own comment. A genuine exception to "every user_id table is
+    // per-user RLS-scoped," not an oversight.
+    const DELIBERATELY_UNSCOPED = new Set(['insight_reactions']);
     const known = new Set<string>(USER_SCOPED_TABLES);
     const orphans = rows
       .map((r) => r.table_name)
-      .filter((t) => !known.has(t));
+      .filter((t) => !known.has(t) && !DELIBERATELY_UNSCOPED.has(t));
     expect(
       orphans,
       `these public.* tables have user_id but are not in USER_SCOPED_TABLES (add to schema.ts + audit-rls.sql + this file, or drop): ${orphans.join(', ')}`,

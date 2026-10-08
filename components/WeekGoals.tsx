@@ -6,6 +6,7 @@ import type { WeekPlanRepository } from '@ikigai/storage';
 import { useRepository } from './RepositoryProvider';
 import { useStashedField } from '../lib/useStashedField';
 import { StashRestoreBanner } from './StashRestoreBanner';
+import { prefetchWeeklyInsightForCurrentWeek } from '../lib/prefetchWeeklyInsight';
 
 // The in-progress "new goal" input, keyed per week plan so users
 // working on multiple weeks (rare but possible) don't cross-
@@ -37,7 +38,8 @@ export default function WeekGoals({
   mode,
   onPlanChange,
 }: WeekGoalsProps) {
-  const { weekPlanRepo } = useRepository();
+  const { weekPlanRepo, weekLogRepo, settingsRepo, weekNoteRepo, profileRepo } =
+    useRepository();
   const [goals, setGoals] = useState<WeekGoal[]>(() => ensureGoals(plan));
   // Draft input is per-plan. The hook re-keys on the plan id so
   // navigating to a different week picks up that week's stash instead
@@ -68,6 +70,16 @@ export default function WeekGoals({
     try {
       const nextPlan = await persistGoals(weekPlanRepo, plan, nextGoals);
       onPlanChange?.(nextPlan);
+      // Fire-and-forget — a goal completion changes what the insight
+      // can honestly connect to, even when it doesn't change whether
+      // one fires at all. See lib/prefetchWeeklyInsight.ts.
+      void prefetchWeeklyInsightForCurrentWeek({
+        settingsRepo,
+        weekPlanRepo,
+        weekLogRepo,
+        weekNoteRepo,
+        profileRepo,
+      });
     } catch (err) {
       setError(String(err));
     }

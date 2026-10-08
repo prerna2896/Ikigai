@@ -19,6 +19,7 @@ import { useTheme } from './ThemeProvider';
 import WeekGoals from './WeekGoals';
 import { getDomainIcon } from '../lib/domainIcons';
 import { useRepository } from './RepositoryProvider';
+import { prefetchWeeklyInsightForCurrentWeek } from '../lib/prefetchWeeklyInsight';
 
 type LogFormState = Record<string, string>;
 
@@ -47,7 +48,8 @@ export default function LogPanel({
   variant = 'standalone',
 }: LogPanelProps) {
   const { theme } = useTheme();
-  const { weekPlanRepo, weekLogRepo } = useRepository();
+  const { weekPlanRepo, weekLogRepo, settingsRepo, weekNoteRepo, profileRepo } =
+    useRepository();
   const [plan, setPlan] = useState<WeekPlan>(weekPlan);
   const [weekLogs, setWeekLogs] = useState<WeekLogEntry[]>([]);
   const [logForm, setLogForm] = useState<LogFormState>({});
@@ -215,6 +217,16 @@ export default function LogPanel({
       } else if (retractEntry && weekLogRepo) {
         await weekLogRepo.retractWeekLog(retractEntry);
       }
+      // Fire-and-forget — warms the Insights cache now rather than
+      // making a later /insights visit wait on it. Never awaited, never
+      // surfaced: see lib/prefetchWeeklyInsight.ts.
+      void prefetchWeeklyInsightForCurrentWeek({
+        settingsRepo,
+        weekPlanRepo,
+        weekLogRepo,
+        weekNoteRepo,
+        profileRepo,
+      });
     } catch (err) {
       setError(errorMessage(err));
       setPlan(plan);
@@ -248,10 +260,11 @@ export default function LogPanel({
         id: domain.id,
         name: domain.name,
         target: domain.plannedHours || 0,
-        completed: domain.tasks.reduce(
-          (sum, task) => sum + (weekTotals[task.id] || 0),
-          0,
-        ),
+        completed: domain.tasks.reduce((sum, task) => {
+          const logged = weekTotals[task.id] || 0;
+          const planned = task.plannedHours || 0;
+          return sum + (task.completedAt ? Math.max(logged, planned) : logged);
+        }, 0),
       })),
     [plan, weekTotals],
   );
@@ -275,8 +288,17 @@ export default function LogPanel({
     [tasksForLog],
   );
   const totalCompletedHours = useMemo(
-    () => Object.values(weekTotals).reduce((sum, h) => sum + h, 0),
-    [weekTotals],
+    () =>
+      tasksForLog.reduce((sum, task) => {
+        const logged = weekTotals[task.id] || 0;
+        const planned = task.plannedHours || 0;
+        // Toggled-done credits planned hours toward the week total
+        // (mirrors the per-row display), so a user who marks all their
+        // planned work done sees "127h of 127h logged" instead of the
+        // stale "0h of 127h" when they haven't also entered numbers.
+        return sum + (task.completedAt ? Math.max(logged, planned) : logged);
+      }, 0),
+    [tasksForLog, weekTotals],
   );
   const hoursLeftToLog = Math.max(
     0,
@@ -388,6 +410,13 @@ export default function LogPanel({
         updatedAt: nowIso,
       };
       await weekLogRepo.saveWeekLog(entry);
+      void prefetchWeeklyInsightForCurrentWeek({
+        settingsRepo,
+        weekPlanRepo,
+        weekLogRepo,
+        weekNoteRepo,
+        profileRepo,
+      });
       const refreshed = await weekLogRepo.getWeekLogs(workingPlan.id);
       const ordered = [...refreshed].sort((a, b) =>
         a.dateISO < b.dateISO ? 1 : -1,
@@ -542,17 +571,22 @@ export default function LogPanel({
       ) : (
         <div className="space-y-2">
           {tasksForLog.map((task) => {
-            const completed = Math.round(weekTotals[task.id] || 0);
+            const logged = Math.round(weekTotals[task.id] || 0);
             const planned = Math.round(task.plannedHours || 0);
-            const left = Math.max(0, planned - completed);
             const markedDone = Boolean(task.completedAt);
             // The ✓ toggle is a first-class "done" signal independent of
             // hours logged (a task can be complete without being
-            // time-tracked). Treat toggled-done as full green so the
-            // left bar reads as done at a glance.
-            const isDone = markedDone || (planned > 0 && completed >= planned);
-            const hoursPct = planned > 0 ? Math.min(100, Math.round((completed / planned) * 100)) : 0;
-            const fillPct = markedDone ? 100 : hoursPct;
+            // time-tracked). When toggled, treat the task as effectively
+            // fully-logged for display purposes: bar goes green, label
+            // reads "Xh / Xh · all done" instead of "0h / Xh · Xh left".
+            const completed = markedDone ? Math.max(logged, planned) : logged;
+            const left = Math.max(0, planned - completed);
+            const isDone = markedDone || (planned > 0 && logged >= planned);
+            const fillPct = markedDone
+              ? 100
+              : planned > 0
+                ? Math.min(100, Math.round((logged / planned) * 100))
+                : 0;
             return (
               <div
                 key={task.id}

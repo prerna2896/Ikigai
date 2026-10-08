@@ -17,3 +17,10 @@ playwright-report/
 # Supabase local runtime state (containers, volumes)
 supabase/.branches/
 supabase/.temp/
+.env*
+
+# Local-only dev data (e.g. AI Insights playground feedback log)
+.data/
+
+# Vercel CLI project link (local machine-specific, not project config)
+.vercel

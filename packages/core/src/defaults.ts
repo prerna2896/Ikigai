@@ -33,6 +33,8 @@ export const createDefaultSettings = (
     jobHoursPerWeek: 0,
     isStudent: false,
     classHoursPerWeek: 0,
+    aiInsightsEnabled: false,
+    companionDisclosureAcknowledgedAt: null,
     createdAt: nowIso,
     updatedAt: nowIso,
   };

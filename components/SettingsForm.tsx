@@ -180,6 +180,23 @@ export default function SettingsForm({
           </select>
           <span className="text-xs text-mutedText">Weeks reset at 12:00 AM.</span>
         </label>
+        <label className="flex items-start gap-3 text-sm text-mutedText md:col-span-2">
+          <input
+            type="checkbox"
+            className="mt-1 h-4 w-4 rounded border-slate-300"
+            checked={settings.aiInsightsEnabled}
+            onChange={(event) => onChange('aiInsightsEnabled', event.target.checked)}
+          />
+          <span>
+            <span className="font-medium text-text">AI Insights</span>
+            <span className="block text-xs text-mutedText">
+              Occasionally surface a short, personalized observation about your
+              week on the Insights tab, including how it relates to the goals
+              you&apos;ve set. Off by default — nothing is sent anywhere unless
+              you turn this on.
+            </span>
+          </span>
+        </label>
       </div>
       <button
         type="button"

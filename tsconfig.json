@@ -20,7 +20,8 @@
       "@ikigai/storage": ["packages/storage/src"],
       "@ikigai/insights": ["packages/insights/src"],
       "@ikigai/db": ["packages/db/src"],
-      "@ikigai/cloud-storage": ["packages/cloud-storage/src"]
+      "@ikigai/cloud-storage": ["packages/cloud-storage/src"],
+      "@ikigai/companion": ["packages/companion/src"]
     },
     "plugins": [{ "name": "next" }]
   },

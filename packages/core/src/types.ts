@@ -48,6 +48,15 @@ export type Settings = {
     | 'no_buffer';
   checkInFrequency?: 'daily' | 'few_days' | 'weekly';
   planningFrequency?: 'daily' | 'weekly' | 'monthly';
+  // Opt-in, default false. Gates ALL calls to the AI Insights feature —
+  // nothing is ever sent to the LLM provider unless this is explicitly
+  // true. See @ikigai/insights.
+  aiInsightsEnabled: boolean;
+  // Kenji companion: null until the user acknowledges the one-time
+  // disclosure (not a therapist, AI not a person). Signed-in only —
+  // local-only users never reach the companion, so this stays null for
+  // them. See @ikigai/companion.
+  companionDisclosureAcknowledgedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 };

@@ -134,6 +134,18 @@ export const settings = pgTable('settings', {
   strictness: text('strictness').notNull().default('structured'),
   checkInFrequency: text('check_in_frequency'),
   planningFrequency: text('planning_frequency'),
+  // Added directly via migration 0005 and never backfilled here until
+  // now — schema.ts had drifted from the live DB on this one column.
+  // Catching it up as part of this change since we're touching this
+  // table anyway; not otherwise related to the companion feature.
+  aiInsightsEnabled: boolean('ai_insights_enabled').notNull().default(false),
+  // Kenji companion: one-time disclosure acknowledgment (not a
+  // therapist, AI not a person) — null until the user accepts it.
+  // Mirrors aiInsightsEnabled's mapping exactly in cloudRepository.ts.
+  companionDisclosureAcknowledgedAt: timestamp('companion_disclosure_acknowledged_at', {
+    withTimezone: true,
+    mode: 'string',
+  }),
   ...auditColumns(),
 });
 
@@ -370,6 +382,88 @@ export const pendingMutations = pgTable(
   }),
 );
 
+// ─── companion_messages (Kenji companion chat transcript) ───────────────
+// Append-only — one row per message, never edited. createdAt-only audit
+// (not the full auditColumns() factory used elsewhere) since there is
+// nothing to update on an immutable row, matching pending_mutations
+// below rather than profiles/settings above.
+export const companionMessages = pgTable(
+  'companion_messages',
+  {
+    id: uuid('id').primaryKey(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => authUsers.id, { onDelete: 'cascade' }),
+    // Groups messages into a session — a new id is minted after a
+    // multi-hour gap since the user's last message (see
+    // @ikigai/companion contextService.determineConversationId). Not a
+    // separate conversations table in v1.
+    conversationId: uuid('conversation_id').notNull(),
+    // CHECK (role IN ('user','assistant')) is added by hand in the
+    // migration — Drizzle's pgTable API doesn't express column-level
+    // CHECK constraints directly.
+    role: text('role').notNull(),
+    content: text('content').notNull(),
+    // True on the user message that matched the deterministic crisis
+    // check AND on the fixed assistant response row that followed it.
+    crisisFlag: boolean('crisis_flag').notNull().default(false),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'string',
+    })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    userCreatedIdx: index('companion_messages_user_created_idx').on(
+      t.userId,
+      t.createdAt,
+    ),
+    userConvoCreatedIdx: index('companion_messages_user_convo_created_idx').on(
+      t.userId,
+      t.conversationId,
+      t.createdAt,
+    ),
+  }),
+);
+
+// ─── companion_context (two-tier memory: persona + recent interaction) ──
+// One row per user (userId doubles as PK, same per-user-singleton shape
+// as profiles/settings above). Both tiers live in one table since
+// they're always read together on a companion turn and written by the
+// same code path (@ikigai/companion contextService) — no independent
+// access pattern justifies a second table. Uses the full auditColumns()
+// factory (unlike companion_messages) since this row IS mutated
+// repeatedly in place.
+export const companionContext = pgTable('companion_context', {
+  userId: uuid('user_id')
+    .primaryKey()
+    .references(() => authUsers.id, { onDelete: 'cascade' }),
+  personaSummary: text('persona_summary').notNull().default(''),
+  personaUpdatedAt: timestamp('persona_updated_at', {
+    withTimezone: true,
+    mode: 'string',
+  }),
+  // Total companion_messages count for this user as of the last persona
+  // recompute — one of two staleness triggers (see
+  // contextService.isPersonaStale: >=14 days OR >=20 new messages).
+  personaSourceMessageCount: integer('persona_source_message_count')
+    .notNull()
+    .default(0),
+  recentInteractionSummary: text('recent_interaction_summary')
+    .notNull()
+    .default(''),
+  recentInteractionUpdatedAt: timestamp('recent_interaction_updated_at', {
+    withTimezone: true,
+    mode: 'string',
+  }),
+  // Which conversationId's end this digest reflects — a mismatch vs.
+  // the CURRENT conversationId means a new session has started and the
+  // digest is stale (see contextService.isRecentInteractionStale).
+  recentInteractionConversationId: uuid('recent_interaction_conversation_id'),
+  ...auditColumns(),
+});
+
 // Manifest — a single list of every user-scoped table.
 // The static policy audit (supabase/scripts/audit-rls.sql) diffs this
 // manifest against pg_policies to prove full policy coverage on every
@@ -388,4 +482,6 @@ export const USER_SCOPED_TABLES = [
   'hours_logged',
   'week_notes',
   'pending_mutations',
+  'companion_messages',
+  'companion_context',
 ] as const;

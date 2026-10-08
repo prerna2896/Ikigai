@@ -27,8 +27,19 @@ DECLARE
     'week_goals',
     'hours_logged',
     'week_notes',
-    'pending_mutations'
+    'pending_mutations',
+    'companion_messages',
+    'companion_context'
   ];
+  -- Deliberately NOT RLS-scoped: insight_reactions has a best-effort,
+  -- nullable user_id but no client read path and no RLS policies at
+  -- all — only the service-role key (which bypasses RLS) ever touches
+  -- it. See supabase/migrations/0006_insight_reactions.sql's own
+  -- comment. A genuine exception to "every user_id table is per-user
+  -- RLS-scoped," not an oversight — excluded from the drift check
+  -- below, NOT added to expected_tables above (which would wrongly
+  -- demand 4 RLS policies on a table that correctly has zero).
+  deliberately_unscoped text[] := ARRAY['insight_reactions'];
   t text;
   policy_count integer;
   rls_on boolean;
@@ -70,6 +81,7 @@ BEGIN
      AND a.attnum > 0
      AND NOT a.attisdropped
      AND c.relname <> ALL(expected_tables)
+     AND c.relname <> ALL(deliberately_unscoped)
    LIMIT 1;
 
   IF drift_table IS NOT NULL THEN
