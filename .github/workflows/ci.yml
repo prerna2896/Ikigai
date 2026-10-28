@@ -1,0 +1,105 @@
+name: CI
+
+# Runs on every PR and on direct pushes to main (covers merges and any
+# hotfix pushed without a PR) — not on every branch push, which would
+# double-run the same commit once as `push` and once as `pull_request`.
+#
+# Three independent jobs, not one pipeline: typecheck/lint/unit need no
+# services and finish in seconds, so they shouldn't wait behind e2e/rls
+# spinning up a browser or a local Supabase instance. All three use a
+# FRESH LOCAL Supabase instance (via the CLI, started inside the
+# runner) — never the project's hosted/staging Supabase — so none of
+# this depends on that project being unpaused, and nothing here can
+# touch real data.
+#
+# Deliberately NOT included: tests/cloud (17 specs). Several of those
+# make real OpenAI calls (the companion/insights specs) — running them
+# on every push would mean real API spend and external-service
+# flakiness gating every commit, not just CI time. See
+# cloud-tests.yml for that suite's own nightly/manual schedule.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Typecheck, lint, unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test:unit
+
+  e2e:
+    name: E2E (local-first, no Supabase)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: npx playwright install --with-deps chromium
+      # No e2e spec touches Supabase, but the app still instantiates a
+      # client on boot and crashes without these set at all — found the
+      # hard way testing a fresh worktree earlier (same non-secret local
+      # demo values as the rls job below, no running Supabase needed).
+      - run: pnpm test:e2e
+        env:
+          CI: true
+          NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report-e2e
+          path: playwright-report/
+          retention-days: 7
+
+  rls:
+    name: RLS + schema integrity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      # Applies every migration in supabase/migrations/ to a fresh
+      # local Postgres — the same command used locally all session
+      # (`supabase db reset --local`) to verify new migrations.
+      - run: supabase start
+      - run: supabase db reset --local
+      # Local Supabase prints the same well-known demo keys on every
+      # machine (see .env.local.example) — not secrets, safe to use
+      # directly here rather than wiring up GitHub Secrets.
+      - run: pnpm test:rls
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0
+          SUPABASE_SERVICE_ROLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+      - name: RLS static audit
+        run: bash supabase/scripts/audit-rls.sh
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres

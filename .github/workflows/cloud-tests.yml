@@ -1,0 +1,74 @@
+name: Cloud tests (nightly)
+
+# tests/cloud (17 specs) drives the app against a REAL local Supabase
+# instance and, for the companion/AI-insights specs, makes REAL OpenAI
+# calls — real external-service dependency and real API spend. That's
+# why this is separate from ci.yml and does NOT run on every push:
+# nightly + on-demand only, so cost and flakiness from an upstream
+# provider don't gate day-to-day development.
+#
+# Needs OPENAI_API_KEY as a repo secret (Settings → Secrets and
+# variables → Actions) — nothing here reads it from .env.local, which
+# isn't committed. Supabase itself is still a fresh local instance
+# spun up inside the runner, same as ci.yml — this never touches the
+# project's hosted Supabase.
+
+on:
+  schedule:
+    # 09:00 UTC daily. Adjust to whenever a failed run is cheapest to
+    # notice (e.g. start of your working day).
+    - cron: '0 9 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  cloud:
+    name: Cloud integration suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: npx playwright install --with-deps chromium
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - run: supabase start
+      - run: supabase db reset --local
+
+      - name: Start dev server (port 3724)
+        run: nohup pnpm dev > dev-server.log 2>&1 &
+        env:
+          PORT: 3724
+          PLAYWRIGHT: '1'
+          NEXT_PUBLIC_PLAYWRIGHT: '1'
+          NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0
+          SUPABASE_SERVICE_ROLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+      - name: Wait for dev server
+        run: npx wait-on http://127.0.0.1:3724 --timeout 120000
+
+      - run: pnpm test:cloud
+        env:
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:3724
+          NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0
+          SUPABASE_SERVICE_ROLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report-cloud
+          path: playwright-report/
+          retention-days: 7
+
+      - name: Dev server log (on failure)
+        if: failure()
+        run: cat dev-server.log || true
