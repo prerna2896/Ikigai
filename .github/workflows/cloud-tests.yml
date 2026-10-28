@@ -24,6 +24,13 @@ jobs:
   cloud:
     name: Cloud integration suite
     runs-on: ubuntu-latest
+    # `supabase start` needs Docker directly on the runner (it launches
+    # its own containers), so this job can't move into a Playwright
+    # container the way ci.yml's e2e job did — kept as `--with-deps`
+    # here. If this hangs the same way that did (saw it twice on the
+    # exact same step, see ci.yml's e2e job comment), the timeout below
+    # at least fails it instead of burning hours silently.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

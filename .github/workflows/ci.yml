@@ -31,6 +31,7 @@ jobs:
   check:
     name: Typecheck, lint, unit tests
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -46,6 +47,18 @@ jobs:
   e2e:
     name: E2E (local-first, no Supabase)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Runs inside Playwright's own image (browsers + every system
+    # dependency already baked in, version-matched to @playwright/test
+    # in package.json) instead of `playwright install --with-deps`,
+    # which hung indefinitely on this runner twice in a row after the
+    # browser download finished — a GitHub-hosted-runner/apt
+    # interaction, not anything in this repo's config. The container
+    # approach skips that apt step entirely. If @playwright/test gets
+    # bumped, bump this tag to match (node --print
+    # "require('@playwright/test/package.json').version" locally).
+    container:
+      image: mcr.microsoft.com/playwright:v1.58.2-noble
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -54,7 +67,6 @@ jobs:
           node-version: 26
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: npx playwright install --with-deps chromium
       # No e2e spec touches Supabase, but the app still instantiates a
       # client on boot and crashes without these set at all — found the
       # hard way testing a fresh worktree earlier (same non-secret local
@@ -74,6 +86,7 @@ jobs:
   rls:
     name: RLS + schema integrity
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
