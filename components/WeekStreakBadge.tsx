@@ -13,7 +13,6 @@
 // streak" action.
 
 import { useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import type { WeekStreakResult } from '../lib/useWeekStreak';
 
 // A single smooth flame shape (not the jagged two-path version this
@@ -104,8 +103,18 @@ export default function WeekStreakBadge({
 }) {
   const [open, setOpen] = useState(false);
   const [recovering, setRecovering] = useState(false);
+  // Captured at click time, not read from streak.recoverable after
+  // the fact — the moment onRecover() resolves, TopNav's bumpSync()
+  // triggers a recompute that heals the week and sets
+  // streak.recoverable back to null, which would otherwise make this
+  // confirmation unreachable (it rendered for literally zero frames
+  // before the parent re-render wiped the data it depended on).
+  const [recoveredWeekISO, setRecoveredWeekISO] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement | null>(null);
-  const router = useRouter();
+
+  useEffect(() => {
+    if (!open) setRecoveredWeekISO(null);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -131,12 +140,15 @@ export default function WeekStreakBadge({
 
   const handleRecover = async () => {
     if (!streak.recoverable || recovering) return;
+    const weekISO = streak.recoverable.weekStartISO;
     setRecovering(true);
     try {
+      // Heals in place — no navigation. Logging real hours for a week
+      // someone may not remember anything about was too big an ask to
+      // gate recovery on; the "Recovered" confirmation below is the
+      // entire flow now.
       await onRecover();
-      const target = `/week/${streak.recoverable.weekStartISO}`;
-      setOpen(false);
-      router.push(target);
+      setRecoveredWeekISO(weekISO);
     } finally {
       setRecovering(false);
     }
@@ -179,24 +191,42 @@ export default function WeekStreakBadge({
             {streak.recentWeeks.map((w) => (
               <span
                 key={w.weekStartISO}
-                title={`${formatWeekStart(w.weekStartISO)} — ${w.active ? 'logged' : 'no activity'}`}
+                title={`${formatWeekStart(w.weekStartISO)} — ${
+                  w.recovered ? 'recovered' : w.active ? 'logged' : 'no activity'
+                }`}
                 className="h-5 flex-1 rounded-sm"
-                style={{ backgroundColor: w.active ? 'var(--accent)' : 'var(--border-strong)' }}
+                style={
+                  w.recovered
+                    ? {
+                        backgroundColor: 'var(--accentSoft)',
+                        boxShadow: 'inset 0 0 0 1.5px var(--accent)',
+                      }
+                    : { backgroundColor: w.active ? 'var(--accent)' : 'var(--border-strong)' }
+                }
               />
             ))}
           </div>
-          <p className="mt-1 text-[11px] text-mutedText">Last {streak.recentWeeks.length} weeks</p>
+          <p className="mt-1 text-[11px] text-mutedText">
+            Last {streak.recentWeeks.length} weeks
+            {streak.recentWeeks.some((w) => w.recovered) ? ' · outlined = recovered' : ''}
+          </p>
 
           <p className="mt-3 text-xs text-mutedText">
             Longest streak: <span className="font-medium text-text">{streak.longestStreak} weeks</span>
           </p>
 
-          {streak.recoverable ? (
+          {recoveredWeekISO ? (
+            <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+              <p data-testid="week-streak-recovered-confirmation" className="text-xs font-medium text-emerald-900">
+                Recovered — the week of {formatWeekStart(recoveredWeekISO)} is back in your streak.
+              </p>
+            </div>
+          ) : streak.recoverable ? (
             <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
               <p className="text-xs font-medium text-amber-900">Recover your streak</p>
               <p className="mt-1 text-xs text-amber-800">
-                The week of {formatWeekStart(streak.recoverable.weekStartISO)} broke it. Log any hours for that
-                week and it&apos;ll be restored.
+                The week of {formatWeekStart(streak.recoverable.weekStartISO)} broke it. You don&apos;t need to
+                remember or log anything from that week — recovering just marks it back in.
               </p>
               {streak.recoveryUsesRemaining > 0 ? (
                 <button
@@ -208,11 +238,15 @@ export default function WeekStreakBadge({
                 >
                   {recovering ? 'Recovering…' : 'Recover streak'}
                 </button>
+              ) : streak.earnedRecoveries === 0 ? (
+                <p data-testid="week-streak-recovery-exhausted" className="mt-2 text-[11px] text-amber-700">
+                  Log some hours this week to earn a recovery.
+                </p>
               ) : (
                 <p data-testid="week-streak-recovery-exhausted" className="mt-2 text-[11px] text-amber-700">
-                  You&apos;ve used your streak recovery for now.
+                  You&apos;ve used the recoveries your recent logging earned.
                   {streak.nextRecoveryAvailableAt
-                    ? ` Next one available ${formatRecoveryDate(streak.nextRecoveryAvailableAt)}.`
+                    ? ` Next one opens around ${formatRecoveryDate(streak.nextRecoveryAvailableAt)} — logging more could earn one sooner.`
                     : ''}
                 </p>
               )}

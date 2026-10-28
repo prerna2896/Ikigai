@@ -8,9 +8,11 @@
 // completed week would punish an honest, partial week instead of
 // recognizing that the person still showed up.
 //
-// Fully derived from existing WeekPlan/WeekLogEntry data — no new DB
-// fields, no migration. Runs in TopNav (every page), so reads for the
-// lookback window are fetched in parallel, not one week at a time.
+// Mostly derived from existing WeekPlan/WeekLogEntry data, plus one
+// small persisted field (Settings.streakRecoveries) for recovery usage
+// history — see computeRecoveryAvailability below for why that can't
+// be derived. Runs in TopNav (every page), so reads for the lookback
+// window are fetched in parallel, not one week at a time.
 
 import { useEffect, useState } from 'react';
 import type { Settings, WeekLogEntry } from '@ikigai/core';
@@ -30,15 +32,22 @@ const RECENT_WEEKS_FOR_DISPLAY = 8;
 // bounded so recovery means "you had a recent slip," not "go pad
 // your streak with something from 3 months ago."
 const RECOVERY_WINDOW_WEEKS = 3;
-// How many recoveries are allowed within a rolling window — a real
-// limit, not unlimited, same spirit as Duolingo's streak freezes
-// being a finite resource rather than an always-available undo.
-// Assumption, not asked for specifically: 1 per rolling 30 days. A
-// per-use-list (not a counter + reset-date pair) means old uses just
-// age out on their own — nothing has to notice "the period ended" and
-// reset anything.
-export const RECOVERY_LIMIT = 1;
-const RECOVERY_LIMIT_WINDOW_DAYS = 30;
+// Recovery uses are earned from recent logging, not a flat allowance —
+// assumption from the product ask: every LOGS_PER_RECOVERY log entries
+// saved within the trailing LOG_WINDOW_DAYS earns one recovery use,
+// rounded up (so any logging at all earns something, not just
+// multiples of 4 — logging twice still earns 1). Both earning AND
+// spending are evaluated over the same rolling window, so a used
+// recovery and the logging that earned it age out together rather
+// than needing separate "period reset" bookkeeping.
+const LOG_WINDOW_DAYS = 14;
+const LOGS_PER_RECOVERY = 4;
+// Ceiling on earned recoveries per window — logging very frequently
+// (e.g. several times a day) shouldn't translate into an effectively
+// unlimited recovery allowance. Doesn't bind on the examples that
+// motivated this formula (2 logs -> 1, 7 logs -> 2); only kicks in for
+// much heavier logging than that.
+const MAX_EARNED_RECOVERIES = 3;
 
 export type RiskLevel =
   | 'none' // no streak yet
@@ -46,15 +55,26 @@ export type RiskLevel =
   | 'pending' // no activity yet this week, but there's still time
   | 'urgent'; // no activity yet, and the week is about to end
 
-export type WeekSummary = { weekStartISO: string; active: boolean };
+export type WeekSummary = {
+  weekStartISO: string;
+  // True if either genuinely logged OR healed via a streak recovery
+  // (see recovered below) — this is the "counts toward the streak"
+  // flag used by all the counting logic in this file.
+  active: boolean;
+  // True only for a week healed via recovery rather than real logged
+  // hours — lets the UI (history strip, overview trend chart) show a
+  // recovered week differently from a genuinely logged one instead of
+  // claiming hours that were never actually logged.
+  recovered: boolean;
+};
 
 export type WeekStreakResult = {
   status: 'loading' | 'ready';
-  // Consecutive weeks of logged activity, most recent first. Includes
-  // the current week only once it has its own logged activity — an
-  // in-progress week doesn't retroactively break the streak just
-  // because today hasn't been logged yet, but it also doesn't get
-  // counted until it actually has something in it.
+  // Consecutive weeks of logged (or recovered) activity, most recent
+  // first. Includes the current week only once it has its own logged
+  // activity — an in-progress week doesn't retroactively break the
+  // streak just because today hasn't been logged yet, but it also
+  // doesn't get counted until it actually has something in it.
   count: number;
   isActiveThisWeek: boolean;
   daysLeftInWeek: number;
@@ -66,18 +86,24 @@ export type WeekStreakResult = {
   recentWeeks: WeekSummary[];
   // The single most recent week that broke the current streak, if
   // it's within RECOVERY_WINDOW_WEEKS and there's genuine streak
-  // history before it (not just "never started"). Log any hours for
-  // this week (e.g. via its /week/<id> page) and the streak heals on
-  // its own — no special "recover" write path needed, the normal
-  // computation just stops breaking there next time.
+  // history before it (not just "never started"). Recovering it heals
+  // the streak immediately — no logging required (see
+  // recordStreakRecoveryUse).
   recoverable: WeekSummary | null;
   // How many recoveries are still available within the rolling
   // window — 0 means recoverable (if set) can be shown but not acted
-  // on until nextRecoveryAvailableAt.
+  // on until nextRecoveryAvailableAt (or until more logging earns a
+  // fresh one — see earnedRecoveries).
   recoveryUsesRemaining: number;
+  // How many recoveries the person's recent logging has earned this
+  // window, before subtracting uses already spent. 0 means the
+  // exhausted state is "log something to earn a recovery," not "wait
+  // out a timer" — the UI should phrase those two differently.
+  earnedRecoveries: number;
   // ISO date the next recovery use becomes available again, once the
   // oldest use blocking the current window ages out. Null when a use
-  // is available right now (or there's nothing to recover anyway).
+  // is available right now, or when nothing's blocking (earned 0,
+  // used 0) — in that case logging is what unlocks it, not time.
   nextRecoveryAvailableAt: string | null;
 };
 
@@ -90,49 +116,70 @@ const IDLE: WeekStreakResult = {
   longestStreak: 0,
   recentWeeks: [],
   recoverable: null,
-  recoveryUsesRemaining: RECOVERY_LIMIT,
+  recoveryUsesRemaining: 0,
+  earnedRecoveries: 0,
   nextRecoveryAvailableAt: null,
 };
 
+export type StreakRecoveryUse = { usedAt: string; weekStartISO: string };
+
+export function computeEarnedRecoveries(recentLogActionCount: number): number {
+  return Math.min(MAX_EARNED_RECOVERIES, Math.ceil(recentLogActionCount / LOGS_PER_RECOVERY));
+}
+
 export function computeRecoveryAvailability(
-  recoveryDates: string[] | undefined,
+  recentLogActionCount: number,
+  recoveries: StreakRecoveryUse[] | undefined,
   now: Date,
-): { recoveryUsesRemaining: number; nextRecoveryAvailableAt: string | null } {
-  const windowMs = RECOVERY_LIMIT_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+): { recoveryUsesRemaining: number; earnedRecoveries: number; nextRecoveryAvailableAt: string | null } {
+  const windowMs = LOG_WINDOW_DAYS * 24 * 60 * 60 * 1000;
   const cutoff = now.getTime() - windowMs;
-  const withinWindow = (recoveryDates ?? [])
-    .map((d) => new Date(d).getTime())
+  const earnedRecoveries = computeEarnedRecoveries(recentLogActionCount);
+  const usesWithinWindow = (recoveries ?? [])
+    .map((r) => new Date(r.usedAt).getTime())
     .filter((t) => Number.isFinite(t) && t > cutoff)
     .sort((a, b) => a - b);
 
-  const remaining = Math.max(0, RECOVERY_LIMIT - withinWindow.length);
+  const remaining = Math.max(0, earnedRecoveries - usesWithinWindow.length);
   if (remaining > 0) {
-    return { recoveryUsesRemaining: remaining, nextRecoveryAvailableAt: null };
+    return { recoveryUsesRemaining: remaining, earnedRecoveries, nextRecoveryAvailableAt: null };
   }
-  // At the limit — the next slot opens when the OLDEST use inside the
-  // window ages past it.
-  const oldestBlocking = withinWindow[0];
+  if (usesWithinWindow.length === 0) {
+    // Nothing earned, nothing spent — there's no outstanding use to
+    // age out and open a slot. Only fresh logging unlocks one.
+    return { recoveryUsesRemaining: 0, earnedRecoveries, nextRecoveryAvailableAt: null };
+  }
+  // At the earned limit — the next slot opens when the OLDEST use
+  // inside the window ages past it (assuming no additional logging
+  // earns one sooner — this date is a worst case, not a promise).
+  const oldestBlocking = usesWithinWindow[0];
   const nextAvailable = new Date(oldestBlocking + windowMs).toISOString();
-  return { recoveryUsesRemaining: 0, nextRecoveryAvailableAt: nextAvailable };
+  return { recoveryUsesRemaining: 0, earnedRecoveries, nextRecoveryAvailableAt: nextAvailable };
 }
 
 /**
  * Records a streak-recovery use and returns the updated Settings —
  * call right when the person commits to recovering (clicking the
- * "Recover streak" button), not conditionally on whether they
- * actually go log hours afterward. A standalone function rather than
- * something the hook itself does, since it's a write (needs
- * settingsRepo), while the hook is otherwise read-only derived state.
- * Caller is responsible for persisting via settingsRepo.saveSettings
- * and triggering a recompute (e.g. via useBumpSync()).
+ * "Recover streak" button). Recovery no longer requires logging real
+ * hours for the healed week (a big ask for a week someone may not
+ * remember anything about) — this is the entire act of recovering, a
+ * standalone function rather than something the hook itself does,
+ * since it's a write (needs settingsRepo), while the hook is
+ * otherwise read-only derived state. Caller is responsible for
+ * persisting via settingsRepo.saveSettings and triggering a recompute
+ * (e.g. via useBumpSync()).
  */
-export function recordStreakRecoveryUse(settings: Settings, now: Date = new Date()): Settings {
-  const dates = [...(settings.streakRecoveryDates ?? []), now.toISOString()];
-  // Matches the schema's own cap — trim the oldest first if this ever
-  // somehow grows unbounded (it shouldn't, at 1 per 30 days, but
-  // defensive rather than relying on that holding forever).
-  const trimmed = dates.length > 200 ? dates.slice(dates.length - 200) : dates;
-  return { ...settings, streakRecoveryDates: trimmed };
+export function recordStreakRecoveryUse(
+  settings: Settings,
+  weekStartISO: string,
+  now: Date = new Date(),
+): Settings {
+  const recoveries = [...(settings.streakRecoveries ?? []), { usedAt: now.toISOString(), weekStartISO }];
+  // Defensive cap matching the schema's own — shouldn't realistically
+  // be reached (earned recoveries are capped per window too), but
+  // trims the oldest first rather than relying on that holding forever.
+  const trimmed = recoveries.length > 200 ? recoveries.slice(recoveries.length - 200) : recoveries;
+  return { ...settings, streakRecoveries: trimmed };
 }
 
 function weekHasLoggedActivity(logs: WeekLogEntry[]): boolean {
@@ -207,10 +254,13 @@ export function useWeekStreak(args: {
       if (cancelled) return;
       const logsByWeek = new Map(logEntries);
 
-      const weeks: WeekSummary[] = weekStartISOs.map((iso) => ({
-        weekStartISO: iso,
-        active: logsByWeek.has(iso) ? weekHasLoggedActivity(logsByWeek.get(iso)!) : false,
-      }));
+      const recoveredWeekISOs = new Set((settings?.streakRecoveries ?? []).map((r) => r.weekStartISO));
+
+      const weeks: WeekSummary[] = weekStartISOs.map((iso) => {
+        const hasLogs = logsByWeek.has(iso) ? weekHasLoggedActivity(logsByWeek.get(iso)!) : false;
+        const recovered = recoveredWeekISOs.has(iso);
+        return { weekStartISO: iso, active: hasLogs || recovered, recovered };
+      });
 
       const isActiveThisWeek = weeks[0]?.active ?? false;
       const daysLeftInWeek = computeDaysLeftInWeek(currentWeekStartISO, now);
@@ -275,8 +325,21 @@ export function useWeekStreak(args: {
         .reverse()
         .filter((w) => !earliestPlanWeekISO || w.weekStartISO >= earliestPlanWeekISO)
         .slice(-RECENT_WEEKS_FOR_DISPLAY);
-      const { recoveryUsesRemaining, nextRecoveryAvailableAt } = computeRecoveryAvailability(
-        settings?.streakRecoveryDates,
+
+      // How many times hours were actually saved in the trailing
+      // LOG_WINDOW_DAYS — the basis for how many recoveries have been
+      // earned (see computeRecoveryAvailability). Counts save actions
+      // (updatedAt), not which date the hours were logged against, so
+      // backfilling an old date in one sitting counts once, not once
+      // per date covered.
+      const logWindowCutoff = now.getTime() - LOG_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+      const recentLogActionCount = Array.from(logsByWeek.values())
+        .flat()
+        .filter((entry) => new Date(entry.updatedAt).getTime() > logWindowCutoff).length;
+
+      const { recoveryUsesRemaining, earnedRecoveries, nextRecoveryAvailableAt } = computeRecoveryAvailability(
+        recentLogActionCount,
+        settings?.streakRecoveries,
         now,
       );
 
@@ -291,6 +354,7 @@ export function useWeekStreak(args: {
           recentWeeks,
           recoverable,
           recoveryUsesRemaining,
+          earnedRecoveries,
           nextRecoveryAvailableAt,
         });
       }

@@ -57,12 +57,15 @@ export type Settings = {
   // local-only users never reach the companion, so this stays null for
   // them. See @ikigai/companion.
   companionDisclosureAcknowledgedAt?: string | null;
-  // ISO timestamps of each weekly-streak recovery used (see
-  // lib/useWeekStreak.ts). Recovery is rate-limited — only the most
-  // recent entries within the limit's rolling window still count
-  // toward it, but older ones are kept rather than pruned so this
-  // field doubles as a plain usage history.
-  streakRecoveryDates?: string[];
+  // Each weekly-streak recovery used (see lib/useWeekStreak.ts):
+  // usedAt is when it was spent, weekStartISO is which broken week it
+  // healed. How many of these are available to spend is earned from
+  // recent logging activity, not a flat count, so both earning and
+  // spending are evaluated over the same rolling window — only the
+  // most recent entries within that window still count, but older
+  // ones are kept rather than pruned so this field doubles as a plain
+  // usage history.
+  streakRecoveries?: Array<{ usedAt: string; weekStartISO: string }>;
   createdAt: string;
   updatedAt: string;
 };

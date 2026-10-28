@@ -252,6 +252,7 @@ export default function HistoryPage() {
         });
         return {
           weekId: plan.id,
+          weekStartISO: plan.weekStartISO,
           rangeLabel: formatRange(plan, timeZone),
           plannedTotal,
           completedTotal: cappedCompletedTotal,
@@ -514,6 +515,9 @@ export default function HistoryPage() {
       if (rangeEndISO && s.weekId > rangeEndISO) return false;
       return true;
     });
+    const recoveredWeekStartISOs = new Set(
+      (settings?.streakRecoveries ?? []).map((r) => r.weekStartISO),
+    );
     const points = filtered.map((summary, index) => ({
       index,
       label: summary.rangeLabel,
@@ -521,6 +525,13 @@ export default function HistoryPage() {
       planned: summary.plannedTotal,
       completed: summary.completedTotal,
       hasLogs: (weekLogsByWeek[summary.weekId]?.length ?? 0) > 0,
+      // Healed via a streak recovery rather than real logged hours —
+      // the dot for this week is drawn hollow/ringed instead of
+      // filled so it reads as "marked back in," not "you did 10h this
+      // week" (see the 168h-vs-actual-hours scale fix just below:
+      // without that fix this distinction barely mattered, since
+      // every real value already clustered unreadably near zero).
+      recovered: recoveredWeekStartISOs.has(summary.weekStartISO),
     }));
     const totalWeekHours = 168;
     const baselineAvailable = settings
@@ -531,10 +542,19 @@ export default function HistoryPage() {
             settings.maintenanceHoursPerDay * 7,
         )
       : null;
-    const maxHours = points.reduce(
+    // The chart's Y-axis used to be hardcoded to a 168h (full week)
+    // ceiling regardless of actual data — real plans are usually a
+    // handful to a few dozen hours, so every point clustered within
+    // the bottom ~10% of the chart and dips/recoveries were visually
+    // indistinguishable from noise. Scale to what's actually in the
+    // selected range instead, with headroom so points near the peak
+    // don't touch the top edge, and a sane floor so a very quiet
+    // range doesn't zoom in on nothing.
+    const rawMax = points.reduce(
       (max, point) => Math.max(max, point.planned, point.completed),
-      totalWeekHours,
+      0,
     );
+    const maxHours = Math.max(10, Math.ceil((rawMax || 10) * 1.15));
     return { points, maxHours, totalWeekHours, baselineAvailable };
   }, [historySummaries, weekLogsByWeek, settings, rangeStartISO, rangeEndISO]);
 
@@ -737,13 +757,16 @@ export default function HistoryPage() {
                       const cW = 520 - pL - pR;
                       const cH = 210 - pT - pB;
                       const n = weeklySeries.points.length;
-                      const totalH = 168;
+                      // Scaled to the data actually in range, not a
+                      // fixed 168h week — see weeklySeries above.
+                      const totalH = weeklySeries.maxHours;
                       const step = n > 1 ? cW / (n - 1) : 0;
                       const colW = n > 1 ? step : cW;
                       const baseline = pT + cH;
 
                       const toY = (v: number) => pT + cH - (v / totalH) * cH;
-                      const ticks = [0, 50, 100, 150, 168];
+                      const tickStep = totalH / 4;
+                      const ticks = Array.from({ length: 5 }, (_, i) => Math.round(tickStep * i));
 
                       return (
                         <>
@@ -753,7 +776,7 @@ export default function HistoryPage() {
                               <line
                                 x1={pL} y1={toY(v)}
                                 x2={pL + cW} y2={toY(v)}
-                                stroke={v === 0 || v === 168 ? '#cbd5e1' : '#f1f5f9'}
+                                stroke={v === 0 || v === ticks[ticks.length - 1] ? '#cbd5e1' : '#f1f5f9'}
                                 strokeWidth="1"
                               />
                               <text x={pL - 4} y={toY(v) + 3.5} textAnchor="end" fontSize="9" fill="#94a3b8">
@@ -825,19 +848,32 @@ export default function HistoryPage() {
                                   style={{ cursor: 'pointer' }}
                                   onMouseEnter={() => setHoveredSeries({ x: cx, y: plannedY, type: 'Planned', value: point.planned })}
                                 />
-                                <circle
-                                  cx={cx} cy={completedY} r="5"
-                                  fill={overachieved ? '#4d9e8e' : '#6b8fa8'} stroke="white" strokeWidth="1.5"
-                                  style={{ cursor: 'pointer' }}
-                                  onMouseEnter={() => setHoveredSeries({ x: cx, y: completedY, type: 'Completed', value: point.completed })}
-                                />
+                                {point.recovered ? (
+                                  // Healed via a streak recovery, not actually
+                                  // logged — drawn hollow and ringed rather
+                                  // than filled solid, so it reads as "marked
+                                  // back in" instead of claiming real hours.
+                                  <circle
+                                    cx={cx} cy={completedY} r="5.5"
+                                    stroke="#6b8fa8" strokeWidth="2" strokeDasharray="2.2 1.8"
+                                    style={{ cursor: 'pointer', fill: 'var(--surface)' }}
+                                    onMouseEnter={() => setHoveredSeries({ x: cx, y: completedY, type: 'Recovered (not logged)', value: point.completed })}
+                                  />
+                                ) : (
+                                  <circle
+                                    cx={cx} cy={completedY} r="5"
+                                    fill={overachieved ? '#4d9e8e' : '#6b8fa8'} stroke="white" strokeWidth="1.5"
+                                    style={{ cursor: 'pointer' }}
+                                    onMouseEnter={() => setHoveredSeries({ x: cx, y: completedY, type: 'Completed', value: point.completed })}
+                                  />
+                                )}
                               </g>
                             );
                           })}
 
                           {/* Tooltip */}
                           {hoveredSeries && (() => {
-                            const tw = 76;
+                            const tw = Math.max(76, hoveredSeries.type.length * 5.6 + 16);
                             const th = 34;
                             const tx = Math.min(Math.max(hoveredSeries.x - tw / 2, pL), pL + cW - tw);
                             const ty = hoveredSeries.y > pT + 40 ? hoveredSeries.y - th - 8 : hoveredSeries.y + 10;
@@ -871,6 +907,15 @@ export default function HistoryPage() {
                     <span className="h-2 w-3 rounded-sm" style={{ background: 'rgba(134,239,172,0.4)' }} />
                     Has logs
                   </span>
+                  {weeklySeries.points.some((p) => p.recovered) ? (
+                    <span className="inline-flex items-center gap-1.5">
+                      <span
+                        className="h-2 w-2 rounded-full"
+                        style={{ background: 'var(--surface)', boxShadow: 'inset 0 0 0 1.5px #6b8fa8' }}
+                      />
+                      Recovered (not logged)
+                    </span>
+                  ) : null}
                 </div>
               </>
             ) : (

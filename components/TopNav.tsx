@@ -92,8 +92,8 @@ export default function TopNav() {
   const streak = useWeekStreak({ weekPlanRepo, weekLogRepo, settings, refreshKey: cloudVersion });
 
   const handleRecoverStreak = async () => {
-    if (!settingsRepo || !settings) return;
-    const updated = recordStreakRecoveryUse(settings);
+    if (!settingsRepo || !settings || !streak.recoverable) return;
+    const updated = recordStreakRecoveryUse(settings, streak.recoverable.weekStartISO);
     await settingsRepo.saveSettings(updated);
     setSettings(updated);
     bumpSync();
