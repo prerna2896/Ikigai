@@ -247,6 +247,7 @@ export class CloudRepository
       planningFrequency: data.planning_frequency ?? undefined,
       aiInsightsEnabled: Boolean(data.ai_insights_enabled),
       companionDisclosureAcknowledgedAt: data.companion_disclosure_acknowledged_at ?? null,
+      streakRecoveryDates: data.streak_recovery_dates ?? [],
       createdAt: data.created_at,
       updatedAt: data.updated_at,
     };
@@ -281,6 +282,7 @@ export class CloudRepository
         planning_frequency: settings.planningFrequency ?? null,
         ai_insights_enabled: settings.aiInsightsEnabled,
         companion_disclosure_acknowledged_at: settings.companionDisclosureAcknowledgedAt ?? null,
+        streak_recovery_dates: settings.streakRecoveryDates ?? [],
         created_at: settings.createdAt || now,
         updated_at: now,
       },

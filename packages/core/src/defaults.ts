@@ -35,6 +35,7 @@ export const createDefaultSettings = (
     classHoursPerWeek: 0,
     aiInsightsEnabled: false,
     companionDisclosureAcknowledgedAt: null,
+    streakRecoveryDates: [],
     createdAt: nowIso,
     updatedAt: nowIso,
   };

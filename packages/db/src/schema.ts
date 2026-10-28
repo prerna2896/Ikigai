@@ -146,6 +146,15 @@ export const settings = pgTable('settings', {
     withTimezone: true,
     mode: 'string',
   }),
+  // ISO timestamps of each weekly-streak recovery used (see
+  // lib/useWeekStreak.ts) — rate-limited, computed client-side from
+  // this list rather than a separate counter + reset-date pair, so
+  // there's no explicit "reset" logic to get wrong; old entries just
+  // age out of whatever window the limit uses.
+  streakRecoveryDates: text('streak_recovery_dates')
+    .array()
+    .notNull()
+    .default(sql`ARRAY[]::text[]`),
   ...auditColumns(),
 });
 

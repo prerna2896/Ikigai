@@ -30,6 +30,15 @@ const RECENT_WEEKS_FOR_DISPLAY = 8;
 // bounded so recovery means "you had a recent slip," not "go pad
 // your streak with something from 3 months ago."
 const RECOVERY_WINDOW_WEEKS = 3;
+// How many recoveries are allowed within a rolling window — a real
+// limit, not unlimited, same spirit as Duolingo's streak freezes
+// being a finite resource rather than an always-available undo.
+// Assumption, not asked for specifically: 1 per rolling 30 days. A
+// per-use-list (not a counter + reset-date pair) means old uses just
+// age out on their own — nothing has to notice "the period ended" and
+// reset anything.
+export const RECOVERY_LIMIT = 1;
+const RECOVERY_LIMIT_WINDOW_DAYS = 30;
 
 export type RiskLevel =
   | 'none' // no streak yet
@@ -62,6 +71,14 @@ export type WeekStreakResult = {
   // its own — no special "recover" write path needed, the normal
   // computation just stops breaking there next time.
   recoverable: WeekSummary | null;
+  // How many recoveries are still available within the rolling
+  // window — 0 means recoverable (if set) can be shown but not acted
+  // on until nextRecoveryAvailableAt.
+  recoveryUsesRemaining: number;
+  // ISO date the next recovery use becomes available again, once the
+  // oldest use blocking the current window ages out. Null when a use
+  // is available right now (or there's nothing to recover anyway).
+  nextRecoveryAvailableAt: string | null;
 };
 
 const IDLE: WeekStreakResult = {
@@ -73,7 +90,50 @@ const IDLE: WeekStreakResult = {
   longestStreak: 0,
   recentWeeks: [],
   recoverable: null,
+  recoveryUsesRemaining: RECOVERY_LIMIT,
+  nextRecoveryAvailableAt: null,
 };
+
+export function computeRecoveryAvailability(
+  recoveryDates: string[] | undefined,
+  now: Date,
+): { recoveryUsesRemaining: number; nextRecoveryAvailableAt: string | null } {
+  const windowMs = RECOVERY_LIMIT_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+  const cutoff = now.getTime() - windowMs;
+  const withinWindow = (recoveryDates ?? [])
+    .map((d) => new Date(d).getTime())
+    .filter((t) => Number.isFinite(t) && t > cutoff)
+    .sort((a, b) => a - b);
+
+  const remaining = Math.max(0, RECOVERY_LIMIT - withinWindow.length);
+  if (remaining > 0) {
+    return { recoveryUsesRemaining: remaining, nextRecoveryAvailableAt: null };
+  }
+  // At the limit — the next slot opens when the OLDEST use inside the
+  // window ages past it.
+  const oldestBlocking = withinWindow[0];
+  const nextAvailable = new Date(oldestBlocking + windowMs).toISOString();
+  return { recoveryUsesRemaining: 0, nextRecoveryAvailableAt: nextAvailable };
+}
+
+/**
+ * Records a streak-recovery use and returns the updated Settings —
+ * call right when the person commits to recovering (clicking the
+ * "Recover streak" button), not conditionally on whether they
+ * actually go log hours afterward. A standalone function rather than
+ * something the hook itself does, since it's a write (needs
+ * settingsRepo), while the hook is otherwise read-only derived state.
+ * Caller is responsible for persisting via settingsRepo.saveSettings
+ * and triggering a recompute (e.g. via useBumpSync()).
+ */
+export function recordStreakRecoveryUse(settings: Settings, now: Date = new Date()): Settings {
+  const dates = [...(settings.streakRecoveryDates ?? []), now.toISOString()];
+  // Matches the schema's own cap — trim the oldest first if this ever
+  // somehow grows unbounded (it shouldn't, at 1 per 30 days, but
+  // defensive rather than relying on that holding forever).
+  const trimmed = dates.length > 200 ? dates.slice(dates.length - 200) : dates;
+  return { ...settings, streakRecoveryDates: trimmed };
+}
 
 function weekHasLoggedActivity(logs: WeekLogEntry[]): boolean {
   return logs.some((log) => Object.values(log.taskHours).some((hours) => hours > 0));
@@ -195,6 +255,10 @@ export function useWeekStreak(args: {
               : 'pending';
 
       const recentWeeks = [...weeks].reverse().slice(-RECENT_WEEKS_FOR_DISPLAY);
+      const { recoveryUsesRemaining, nextRecoveryAvailableAt } = computeRecoveryAvailability(
+        settings?.streakRecoveryDates,
+        now,
+      );
 
       if (!cancelled) {
         setResult({
@@ -206,6 +270,8 @@ export function useWeekStreak(args: {
           longestStreak,
           recentWeeks,
           recoverable,
+          recoveryUsesRemaining,
+          nextRecoveryAvailableAt,
         });
       }
     })();

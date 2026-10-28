@@ -9,9 +9,9 @@ import ThemePicker from './ThemePicker';
 import WeekStreakBadge from './WeekStreakBadge';
 import { createClient as createSupabaseClient } from '../lib/supabase/client';
 import { useRepository } from './RepositoryProvider';
-import { useCloudSyncVersion } from './CloudSyncProvider';
+import { useCloudSyncVersion, useBumpSync } from './CloudSyncProvider';
 import { usePendingMutationsCount, usePendingMutationsPoisonedCount } from './PendingMutationsProvider';
-import { useWeekStreak } from '../lib/useWeekStreak';
+import { useWeekStreak, recordStreakRecoveryUse } from '../lib/useWeekStreak';
 
 const iconClass = 'h-4 w-4';
 
@@ -86,9 +86,18 @@ export default function TopNav() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const { profileRepo, settingsRepo, weekPlanRepo, weekLogRepo } = useRepository();
   const cloudVersion = useCloudSyncVersion();
+  const bumpSync = useBumpSync();
   const pendingCount = usePendingMutationsCount();
   const poisonedCount = usePendingMutationsPoisonedCount();
   const streak = useWeekStreak({ weekPlanRepo, weekLogRepo, settings, refreshKey: cloudVersion });
+
+  const handleRecoverStreak = async () => {
+    if (!settingsRepo || !settings) return;
+    const updated = recordStreakRecoveryUse(settings);
+    await settingsRepo.saveSettings(updated);
+    setSettings(updated);
+    bumpSync();
+  };
 
   useEffect(() => {
     if (!profileRepo) {
@@ -227,7 +236,7 @@ export default function TopNav() {
         )}
         <div className="flex items-center gap-2">
           {isOnboarding || isAuthRoute || !hasOnboarded ? null : (
-            <WeekStreakBadge streak={streak} />
+            <WeekStreakBadge streak={streak} onRecover={handleRecoverStreak} />
           )}
           <ThemePicker />
           {isAuthRoute ? null : userEmail ? (

@@ -2,18 +2,18 @@
 
 // Duolingo-style streak pill, lives in TopNav (every page) — see
 // lib/useWeekStreak.ts for the "what counts," risk-level, and
-// recovery logic. Deliberately quiet when there's no streak yet
+// recovery-limit logic. Deliberately quiet when there's no streak yet
 // (renders nothing) rather than a shaming "0" — this app's voice is
 // autonomy-supportive, not guilt-driven.
 //
 // Click opens a small detail popover: the streak count with a risk-
 // appropriate message, a mini calendar-strip of recent weeks, the
 // longest streak in the lookback window, and — if a recent week broke
-// the streak — a "recover" card linking to that week so logging
-// anything there heals it on the next recompute.
+// the streak and a recovery use is still available — a "Recover
+// streak" action.
 
 import { useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import type { WeekStreakResult } from '../lib/useWeekStreak';
 
 // A single smooth flame shape (not the jagged two-path version this
@@ -21,7 +21,7 @@ import type { WeekStreakResult } from '../lib/useWeekStreak';
 // of this app's hand-drawn line-icon style when unlit (stroke-only)
 // and filling in warm when lit, same visual language Duolingo itself
 // uses for "today's already in the books."
-function FlameIcon({ filled, className }: { filled: boolean; className?: string }) {
+function FlameIcon({ filled, className, style }: { filled: boolean; className?: string; style?: React.CSSProperties }) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -31,6 +31,7 @@ function FlameIcon({ filled, className }: { filled: boolean; className?: string 
       strokeLinecap="round"
       strokeLinejoin="round"
       className={className}
+      style={style}
       aria-hidden
     >
       <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
@@ -38,14 +39,39 @@ function FlameIcon({ filled, className }: { filled: boolean; className?: string 
   );
 }
 
-const RISK_STYLES: Record<string, { pill: string; icon: string }> = {
-  safe: { pill: 'border-amber-200 bg-amber-50 text-amber-700', icon: 'text-amber-600' },
-  pending: { pill: 'border-slate-200 text-mutedText', icon: 'text-mutedText' },
-  urgent: { pill: 'border-rose-200 bg-rose-50 text-rose-700', icon: 'text-rose-600' },
+// "Safe" (lit) deliberately uses the active THEME's own accent color
+// (var(--accent), the same CSS custom property ThemePicker's themes
+// each set — see app/globals.css) rather than a fixed hue, so the
+// flame matches whichever of the app's themes is active instead of
+// clashing with it. Note: plain Tailwind utility classes like
+// `text-accent`/`border-accent` do NOT work in this app — they aren't
+// registered Tailwind colors or defined CSS classes here (only
+// .bg-accent/.bg-accentSoft are real) — so this reads the CSS
+// variable directly via inline style instead. "Urgent"/"pending" stay
+// fixed semantic colors on purpose: a danger/neutral signal shouldn't
+// reskin per theme the way a purely decorative "lit" state can — an
+// urgent red that turned theme-teal wouldn't read as urgent anymore.
+//
+// Also deliberately avoids any `slate-*` utility (bg-slate-200,
+// border-slate-200, etc.) here. tailwind.config.js registers a flat
+// brand color under the key "slate" (for Domain.colorToken) which
+// replaces Tailwind's entire built-in slate-50..950 scale rather than
+// extending it — every `slate-<shade>` class app-wide silently
+// compiles to nothing as a result. `border-themed` (globals.css,
+// bound to var(--border)) is the working, theme-reactive substitute.
+const RISK_STYLES: Record<string, { pill: string; usesThemeAccent?: boolean }> = {
+  safe: { pill: 'border-themed bg-accentSoft', usesThemeAccent: true },
+  pending: { pill: 'border-themed text-mutedText' },
+  urgent: { pill: 'border-rose-200 bg-rose-50 text-rose-700' },
 };
 
 function formatWeekStart(iso: string): string {
   const date = new Date(`${iso}T00:00:00`);
+  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(date);
+}
+
+function formatRecoveryDate(iso: string): string {
+  const date = new Date(iso);
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(date);
 }
 
@@ -64,9 +90,22 @@ function riskMessage(streak: WeekStreakResult): string {
   }
 }
 
-export default function WeekStreakBadge({ streak }: { streak: WeekStreakResult }) {
+export default function WeekStreakBadge({
+  streak,
+  onRecover,
+}: {
+  streak: WeekStreakResult;
+  // Records the recovery use (persists it, so the limit is consumed
+  // the moment someone commits to recovering — not conditionally on
+  // whether they actually go log hours afterward). Caller (TopNav)
+  // owns the settings write; this component only triggers it and
+  // then navigates.
+  onRecover: () => Promise<void>;
+}) {
   const [open, setOpen] = useState(false);
+  const [recovering, setRecovering] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
+  const router = useRouter();
 
   useEffect(() => {
     if (!open) return;
@@ -88,6 +127,20 @@ export default function WeekStreakBadge({ streak }: { streak: WeekStreakResult }
 
   const style = RISK_STYLES[streak.riskLevel] ?? RISK_STYLES.pending;
   const lit = streak.riskLevel === 'safe';
+  const accentStyle = style.usesThemeAccent ? { color: 'var(--accent)' } : undefined;
+
+  const handleRecover = async () => {
+    if (!streak.recoverable || recovering) return;
+    setRecovering(true);
+    try {
+      await onRecover();
+      const target = `/week/${streak.recoverable.weekStartISO}`;
+      setOpen(false);
+      router.push(target);
+    } finally {
+      setRecovering(false);
+    }
+  };
 
   return (
     <div ref={ref} className="relative">
@@ -99,8 +152,9 @@ export default function WeekStreakBadge({ streak }: { streak: WeekStreakResult }
         aria-label={`${streak.count} week streak. ${riskMessage(streak)}`}
         onClick={() => setOpen((prev) => !prev)}
         className={`flex h-9 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors ${style.pill}`}
+        style={accentStyle}
       >
-        <FlameIcon filled={lit} className={`h-4 w-4 shrink-0 ${style.icon}`} />
+        <FlameIcon filled={lit} className="h-4 w-4 shrink-0" style={accentStyle} />
         <span data-testid="week-streak-count">{streak.count}</span>
       </button>
 
@@ -109,10 +163,10 @@ export default function WeekStreakBadge({ streak }: { streak: WeekStreakResult }
           role="dialog"
           aria-label="Streak details"
           data-testid="week-streak-popover"
-          className="absolute right-0 z-50 mt-2 w-72 rounded-2xl border border-slate-200 bg-surface p-4 text-sm shadow-lg"
+          className="absolute right-0 z-50 mt-2 w-72 rounded-2xl border border-themed bg-surface p-4 text-sm shadow-lg"
         >
           <div className="flex items-center gap-2">
-            <FlameIcon filled={lit} className={`h-6 w-6 shrink-0 ${style.icon}`} />
+            <FlameIcon filled={lit} className="h-6 w-6 shrink-0" style={accentStyle} />
             <div>
               <p className="font-semibold text-text">
                 {streak.count} week{streak.count === 1 ? '' : 's'} streak
@@ -125,8 +179,9 @@ export default function WeekStreakBadge({ streak }: { streak: WeekStreakResult }
             {streak.recentWeeks.map((w) => (
               <span
                 key={w.weekStartISO}
-                title={w.weekStartISO}
-                className={`h-5 flex-1 rounded-sm ${w.active ? 'bg-amber-400' : 'bg-slate-200'}`}
+                title={`${formatWeekStart(w.weekStartISO)} — ${w.active ? 'logged' : 'no activity'}`}
+                className="h-5 flex-1 rounded-sm"
+                style={{ backgroundColor: w.active ? 'var(--accent)' : 'var(--border-strong)' }}
               />
             ))}
           </div>
@@ -143,14 +198,24 @@ export default function WeekStreakBadge({ streak }: { streak: WeekStreakResult }
                 The week of {formatWeekStart(streak.recoverable.weekStartISO)} broke it. Log any hours for that
                 week and it&apos;ll be restored.
               </p>
-              <Link
-                href={`/week/${streak.recoverable.weekStartISO}`}
-                data-testid="week-streak-recover-link"
-                className="mt-2 inline-flex items-center justify-center rounded-full bg-accent px-3 py-1.5 text-xs font-medium text-white"
-                onClick={() => setOpen(false)}
-              >
-                Go to that week
-              </Link>
+              {streak.recoveryUsesRemaining > 0 ? (
+                <button
+                  type="button"
+                  data-testid="week-streak-recover-button"
+                  onClick={() => void handleRecover()}
+                  disabled={recovering}
+                  className="mt-2 inline-flex items-center justify-center rounded-full bg-accent px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60"
+                >
+                  {recovering ? 'Recovering…' : 'Recover streak'}
+                </button>
+              ) : (
+                <p data-testid="week-streak-recovery-exhausted" className="mt-2 text-[11px] text-amber-700">
+                  You&apos;ve used your streak recovery for now.
+                  {streak.nextRecoveryAvailableAt
+                    ? ` Next one available ${formatRecoveryDate(streak.nextRecoveryAvailableAt)}.`
+                    : ''}
+                </p>
+              )}
             </div>
           ) : null}
         </div>
