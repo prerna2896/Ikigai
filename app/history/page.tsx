@@ -212,6 +212,9 @@ export default function HistoryPage() {
       return [];
     }
     const todayISO = formatLocalISODate(new Date());
+    const recoveredWeekStartISOs = new Set(
+      (settings?.streakRecoveries ?? []).map((r) => r.weekStartISO),
+    );
     return weekPlans
       .slice()
       .sort((a, b) => (a.weekStartISO < b.weekStartISO ? 1 : -1))
@@ -253,6 +256,7 @@ export default function HistoryPage() {
         return {
           weekId: plan.id,
           weekStartISO: plan.weekStartISO,
+          recovered: recoveredWeekStartISOs.has(plan.weekStartISO),
           rangeLabel: formatRange(plan, timeZone),
           plannedTotal,
           completedTotal: cappedCompletedTotal,
@@ -269,7 +273,7 @@ export default function HistoryPage() {
       // either has real logged hours or has fully ended, it's a
       // legitimate data point (including a genuine 0% miss).
       .filter((summary) => summary.completedTotal > 0 || summary.isComplete);
-  }, [weekPlans, weekLogsByWeek, timeZone]);
+  }, [weekPlans, weekLogsByWeek, timeZone, settings]);
 
   useEffect(() => {
     if (!historySummaries.length) {
@@ -515,9 +519,6 @@ export default function HistoryPage() {
       if (rangeEndISO && s.weekId > rangeEndISO) return false;
       return true;
     });
-    const recoveredWeekStartISOs = new Set(
-      (settings?.streakRecoveries ?? []).map((r) => r.weekStartISO),
-    );
     const points = filtered.map((summary, index) => ({
       index,
       label: summary.rangeLabel,
@@ -531,7 +532,7 @@ export default function HistoryPage() {
       // week" (see the 168h-vs-actual-hours scale fix just below:
       // without that fix this distinction barely mattered, since
       // every real value already clustered unreadably near zero).
-      recovered: recoveredWeekStartISOs.has(summary.weekStartISO),
+      recovered: summary.recovered,
     }));
     const totalWeekHours = 168;
     const baselineAvailable = settings
@@ -1027,6 +1028,20 @@ export default function HistoryPage() {
                     <span>
                       {Math.round(summary.completedTotal)}h / {Math.round(summary.plannedTotal)}h
                     </span>
+                    {summary.recovered ? (
+                      // Still a real 0%-complete week (recovery never
+                      // fabricates hours), but the streak doesn't
+                      // treat it as a miss anymore — flag that here
+                      // too instead of leaving it looking like an
+                      // unresolved gap, same distinction the trend
+                      // chart above now makes.
+                      <span
+                        data-testid="weekly-miss-recovered-badge"
+                        className="rounded-full bg-emerald-100 px-2 py-0.5 font-medium text-emerald-700"
+                      >
+                        Recovered
+                      </span>
+                    ) : null}
                     <span className="rounded-full bg-rose-100 px-2 py-0.5 font-medium text-rose-700">
                       {Math.round(summary.adherence * 100)}%
                     </span>
