@@ -183,6 +183,16 @@ export function useWeekStreak(args: {
       const plansByWeek = new Map(weekStartISOs.map((iso) => [iso, findPlanForWeekStart(allPlans, iso)]));
       const plannedWeeks = weekStartISOs.filter((iso) => plansByWeek.get(iso));
 
+      // Earliest week with any real plan, across ALL plans (not just
+      // the lookback window) — weeks before this aren't "missed," the
+      // account/habit just didn't exist yet. Used below so the
+      // history strip doesn't fabricate false misses for a new user.
+      const earliestPlanWeekISO = allPlans.reduce<string | null>(
+        (earliest, plan) =>
+          earliest === null || plan.weekStartISO < earliest ? plan.weekStartISO : earliest,
+        null,
+      );
+
       // Fetch logs for every planned week in parallel — this hook now
       // runs in TopNav (every page), so a sequential N-request
       // waterfall would be a real, visible latency cost for
@@ -254,7 +264,17 @@ export function useWeekStreak(args: {
               ? 'urgent'
               : 'pending';
 
-      const recentWeeks = [...weeks].reverse().slice(-RECENT_WEEKS_FOR_DISPLAY);
+      // Oldest-first for the calendar-strip. Weeks before the account's
+      // first-ever plan are dropped rather than shown as "missed" —
+      // without this, a brand-new account would show several fake
+      // missed weeks padding the left edge before it ever had a
+      // chance to log anything. Short real history naturally renders
+      // as fewer cells, left-anchored, growing rightward with the
+      // account rather than always forcing exactly 8.
+      const recentWeeks = [...weeks]
+        .reverse()
+        .filter((w) => !earliestPlanWeekISO || w.weekStartISO >= earliestPlanWeekISO)
+        .slice(-RECENT_WEEKS_FOR_DISPLAY);
       const { recoveryUsesRemaining, nextRecoveryAvailableAt } = computeRecoveryAvailability(
         settings?.streakRecoveryDates,
         now,
