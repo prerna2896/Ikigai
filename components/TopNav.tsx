@@ -4,11 +4,14 @@ import { useEffect, useState, type ReactNode } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import type { Settings } from '@ikigai/core';
 import ThemePicker from './ThemePicker';
+import WeekStreakBadge from './WeekStreakBadge';
 import { createClient as createSupabaseClient } from '../lib/supabase/client';
 import { useRepository } from './RepositoryProvider';
 import { useCloudSyncVersion } from './CloudSyncProvider';
 import { usePendingMutationsCount, usePendingMutationsPoisonedCount } from './PendingMutationsProvider';
+import { useWeekStreak } from '../lib/useWeekStreak';
 
 const iconClass = 'h-4 w-4';
 
@@ -80,10 +83,12 @@ export default function TopNav() {
   const [initials, setInitials] = useState('·');
   const [hasOnboarded, setHasOnboarded] = useState<boolean | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
-  const { profileRepo } = useRepository();
+  const [settings, setSettings] = useState<Settings | null>(null);
+  const { profileRepo, settingsRepo, weekPlanRepo, weekLogRepo } = useRepository();
   const cloudVersion = useCloudSyncVersion();
   const pendingCount = usePendingMutationsCount();
   const poisonedCount = usePendingMutationsPoisonedCount();
+  const streak = useWeekStreak({ weekPlanRepo, weekLogRepo, settings, refreshKey: cloudVersion });
 
   useEffect(() => {
     if (!profileRepo) {
@@ -107,6 +112,25 @@ export default function TopNav() {
       cancelled = true;
     };
   }, [pathname, profileRepo, cloudVersion]);
+
+  // Settings — only needed here for weekStartDay (streak week-boundary
+  // math). Fetched independently of the profile effect so a settings-
+  // repo hiccup doesn't also blank out the name/initials state.
+  useEffect(() => {
+    if (!settingsRepo) return;
+    let cancelled = false;
+    settingsRepo
+      .getSettings()
+      .then((record) => {
+        if (!cancelled) setSettings(record);
+      })
+      .catch(() => {
+        if (!cancelled) setSettings(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [settingsRepo, cloudVersion]);
 
   // Subscribe to Supabase auth state. Refreshes on pathname change AND on
   // any signIn/signOut event from another tab.
@@ -202,6 +226,9 @@ export default function TopNav() {
           </nav>
         )}
         <div className="flex items-center gap-2">
+          {isOnboarding || isAuthRoute || !hasOnboarded ? null : (
+            <WeekStreakBadge streak={streak} />
+          )}
           <ThemePicker />
           {isAuthRoute ? null : userEmail ? (
             // Signed-in state: no visible email — that's on the profile

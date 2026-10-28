@@ -17,8 +17,6 @@ import { useWeeklyInsight } from '../../lib/useWeeklyInsight';
 import { useReflectionKnowledgeBase } from '../../lib/useReflectionKnowledgeBase';
 import { encodeReflectionNote, latestHinderedNoteText } from '../../lib/reflectionNotes';
 import { createClient as createSupabaseClient } from '../../lib/supabase/client';
-import { useWeekStreak } from '../../lib/useWeekStreak';
-import WeekStreakBadge from '../../components/WeekStreakBadge';
 import ModernMonk from '../../components/ModernMonk';
 import { useTheme, getMonkVariantForTheme } from '../../hooks/useTheme';
 import {
@@ -221,12 +219,6 @@ export default function InsightsPage() {
     notes,
     personaNote,
   });
-  const streak = useWeekStreak({
-    weekPlanRepo,
-    weekLogRepo,
-    settings: state.kind === 'ready' ? state.settings : null,
-    refreshKey: cloudVersion,
-  });
   const theme = useTheme();
   const monkVariant = getMonkVariantForTheme(theme);
 
@@ -353,10 +345,7 @@ export default function InsightsPage() {
             </Link>
           ) : null}
         </div>
-        <div className="flex items-center justify-between gap-3">
-          <h1 className="text-3xl font-semibold text-text">This week, quietly</h1>
-          <WeekStreakBadge streak={streak} />
-        </div>
+        <h1 className="text-3xl font-semibold text-text">This week, quietly</h1>
         <p className="text-sm text-mutedText">
           A short, personal observation — only when there&apos;s something worth
           noticing.
