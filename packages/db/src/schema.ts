@@ -146,6 +146,14 @@ export const settings = pgTable('settings', {
     withTimezone: true,
     mode: 'string',
   }),
+  // Each weekly-streak recovery used (see lib/useWeekStreak.ts): when
+  // it was spent and which broken week it healed. How many are
+  // available is earned from recent logging activity rather than a
+  // flat count, computed client-side from this list and recent logs
+  // rather than a separate counter + reset-date pair, so there's no
+  // explicit "reset" logic to get wrong; old entries just age out of
+  // whatever window applies.
+  streakRecoveries: jsonb('streak_recoveries').notNull().default(sql`'[]'::jsonb`),
   ...auditColumns(),
 });
 

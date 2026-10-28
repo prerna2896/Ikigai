@@ -10,6 +10,7 @@ import type {
   WeekPlan,
 } from '@ikigai/core';
 import { withDerivedPlannedHours } from '../plan/planUtils';
+import LogPanel from '../../../components/LogPanel';
 import { useRepository } from '../../../components/RepositoryProvider';
 import { useCloudSyncVersion } from '../../../components/CloudSyncProvider';
 import {
@@ -147,12 +148,29 @@ export default function WeekRecapPage({
           </p>
         </section>
       ) : (
-        <RecapContent
-          plan={state.plan}
-          logs={state.logs}
-          notes={state.notes}
-          timeZone={state.timeZone}
-        />
+        <>
+          {/* Lets a past week's hours be logged after the fact — the
+              one place in the app this is possible, specifically so a
+              streak-recovery link (see lib/useWeekStreak.ts) has
+              somewhere real to send someone. Ordinary /log only ever
+              targets the current (or latest-planned) week. */}
+          <LogPanel
+            weekPlan={state.plan}
+            variant="embedded"
+            onLogSaved={() => {
+              if (!weekLogRepo) return;
+              weekLogRepo.getWeekLogs(weekId).then((logs) => {
+                setState((prev) => (prev.kind === 'ready' ? { ...prev, logs } : prev));
+              });
+            }}
+          />
+          <RecapContent
+            plan={state.plan}
+            logs={state.logs}
+            notes={state.notes}
+            timeZone={state.timeZone}
+          />
+        </>
       )}
     </main>
   );

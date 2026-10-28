@@ -50,9 +50,18 @@ const USER_SCOPED_TABLES = [
 
 type CloudSyncContextValue = {
   version: number;
+  // Lets a LOCAL write (Dexie — no Realtime event will ever fire for
+  // it) bump the same counter Realtime drives for cloud writes. Without
+  // this, any consumer keyed on version — e.g. the streak badge in
+  // TopNav, which persists across navigation instead of remounting per
+  // page — never learns a signed-out/local user just logged something,
+  // since nothing else re-triggers its effect. Found live: the streak
+  // badge silently failed to update after logging hours locally until
+  // this existed.
+  bump: () => void;
 };
 
-const CloudSyncContext = createContext<CloudSyncContextValue>({ version: 0 });
+const CloudSyncContext = createContext<CloudSyncContextValue>({ version: 0, bump: () => {} });
 
 export function CloudSyncProvider({ children }: { children: ReactNode }) {
   const [version, setVersion] = useState(0);
@@ -122,7 +131,7 @@ export function CloudSyncProvider({ children }: { children: ReactNode }) {
   }, [userId]);
 
   const value = useMemo<CloudSyncContextValue>(
-    () => ({ version }),
+    () => ({ version, bump: () => setVersion((v) => v + 1) }),
     [version],
   );
 
@@ -147,4 +156,15 @@ export function CloudSyncProvider({ children }: { children: ReactNode }) {
  */
 export function useCloudSyncVersion(): number {
   return useContext(CloudSyncContext).version;
+}
+
+/**
+ * Call after any successful LOCAL write (Dexie) that other components
+ * key their refetch on via useCloudSyncVersion — e.g. logging hours.
+ * Cloud writes don't need this; Realtime already bumps version for
+ * those. Safe to call for cloud users too (just an extra, harmless
+ * bump alongside the Realtime one that'll also arrive).
+ */
+export function useBumpSync(): () => void {
+  return useContext(CloudSyncContext).bump;
 }

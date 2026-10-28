@@ -58,6 +58,10 @@ export const settingsSchema = z.object({
   ]),
   aiInsightsEnabled: z.boolean().default(false),
   companionDisclosureAcknowledgedAt: isoDateString.nullable().optional(),
+  streakRecoveries: z
+    .array(z.object({ usedAt: isoDateString, weekStartISO: z.string() }))
+    .max(200)
+    .optional(),
   createdAt: isoDateString,
   updatedAt: isoDateString,
 });

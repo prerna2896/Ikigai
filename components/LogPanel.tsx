@@ -19,6 +19,7 @@ import { useTheme } from './ThemeProvider';
 import WeekGoals from './WeekGoals';
 import { getDomainIcon } from '../lib/domainIcons';
 import { useRepository } from './RepositoryProvider';
+import { useBumpSync } from './CloudSyncProvider';
 import { prefetchWeeklyInsightForCurrentWeek } from '../lib/prefetchWeeklyInsight';
 
 type LogFormState = Record<string, string>;
@@ -50,6 +51,7 @@ export default function LogPanel({
   const { theme } = useTheme();
   const { weekPlanRepo, weekLogRepo, settingsRepo, weekNoteRepo, profileRepo } =
     useRepository();
+  const bumpSync = useBumpSync();
   const [plan, setPlan] = useState<WeekPlan>(weekPlan);
   const [weekLogs, setWeekLogs] = useState<WeekLogEntry[]>([]);
   const [logForm, setLogForm] = useState<LogFormState>({});
@@ -217,6 +219,7 @@ export default function LogPanel({
       } else if (retractEntry && weekLogRepo) {
         await weekLogRepo.retractWeekLog(retractEntry);
       }
+      bumpSync();
       // Fire-and-forget — warms the Insights cache now rather than
       // making a later /insights visit wait on it. Never awaited, never
       // surfaced: see lib/prefetchWeeklyInsight.ts.
@@ -410,6 +413,7 @@ export default function LogPanel({
         updatedAt: nowIso,
       };
       await weekLogRepo.saveWeekLog(entry);
+      bumpSync();
       void prefetchWeeklyInsightForCurrentWeek({
         settingsRepo,
         weekPlanRepo,
