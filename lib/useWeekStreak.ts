@@ -358,7 +358,19 @@ export function useWeekStreak(args: {
           nextRecoveryAvailableAt,
         });
       }
-    })();
+    })().catch((error) => {
+      // Unhandled, this left the badge permanently hidden (status
+      // stuck at 'loading' forever) on any cloud-repo error — RLS
+      // edge case, network blip, anything — with nothing logged
+      // anywhere to say why. Falling back to IDLE keeps today's
+      // "quiet when there's no streak" behavior rather than a visible
+      // error state, but at least logs so this is debuggable instead
+      // of silently invisible.
+      if (!cancelled) {
+        console.error('useWeekStreak: failed to compute streak', error);
+        setResult(IDLE);
+      }
+    });
 
     return () => {
       cancelled = true;
