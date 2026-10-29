@@ -47,7 +47,12 @@ jobs:
   e2e:
     name: E2E (local-first, no Supabase)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 37 tests × up to 3 attempts each (CI retries failures twice, see
+    # playwright.config.ts) at up to 30s/attempt is a real ceiling, not
+    # just padding — the first container run got cancelled by a
+    # tighter timeout before finishing and before printing which tests
+    # actually failed.
+    timeout-minutes: 35
     # Runs inside Playwright's own image (browsers + every system
     # dependency already baked in, version-matched to @playwright/test
     # in package.json) instead of `playwright install --with-deps`,
