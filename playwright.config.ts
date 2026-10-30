@@ -15,7 +15,14 @@ export default defineConfig({
     video: 'retain-on-failure',
   },
   webServer: {
-    command: 'pnpm dev',
+    // CI builds once (see ci.yml) and serves that build — `next dev`
+    // JIT-compiles each route on first visit, which is fine locally
+    // but was blowing through this suite's 30s per-test timeout
+    // inside a resource-constrained CI runner (measured ~20-80ms/route
+    // against a production build vs. multi-second first-compiles in
+    // dev mode, which is what turned a healthy local suite into
+    // near-total CI failures/timeouts).
+    command: process.env.CI ? 'pnpm start' : 'pnpm dev',
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
